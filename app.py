@@ -24,11 +24,11 @@ def healthz():
 @app.route('/api/places')
 def get_places():
     headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY}
-    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,vibe_attributes(noise_level,laptop_friendly,romantic,summary,summary_ru,summary_it,summary_en,ai_model,confidence)"
+    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,vibe_attributes(noise_level,laptop_friendly,romantic,summary,summary_ru,summary_it,summary_en)"
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 400:
-            url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,vibe_attributes(noise_level,laptop_friendly,romantic,summary)"
+            url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,vibe_attributes(noise_level,laptop_friendly,romantic,summary)"
             response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
@@ -57,8 +57,7 @@ HTML_TEMPLATE = """
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{font-family:'Inter',system-ui,sans-serif;color:var(--espresso);background:radial-gradient(900px 420px at 85% -60px,rgba(233,161,59,.20),transparent 60%),radial-gradient(700px 380px at -80px 30%,rgba(196,71,43,.14),transparent 60%),var(--cream);min-height:100vh}
-button{font:inherit;cursor:pointer}
-a{color:var(--terracotta-deep)}
+button{font:inherit;cursor:pointer}a{color:var(--terracotta-deep)}
 :focus-visible{outline:3px solid var(--sky);outline-offset:2px;border-radius:6px}
 header{position:sticky;top:0;z-index:500;background:rgba(250,241,228,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .head-in{max-width:1180px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px}
@@ -105,9 +104,12 @@ input[type=range]::-moz-range-track{height:6px;border-radius:6px;background:var(
 .stats{margin:18px 2px 12px;font-size:14px;font-weight:600;color:var(--muted)}
 .stats b{color:var(--terracotta-deep)}
 .places{display:flex;flex-direction:column;gap:14px}
-.card{background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--spine,var(--terracotta));border-radius:16px;padding:18px;box-shadow:0 6px 18px rgba(42,27,18,.08);transition:transform .2s,box-shadow .2s;animation:rise .35s ease both}
+.card{background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--spine,var(--terracotta));border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(42,27,18,.08);transition:transform .2s,box-shadow .2s;animation:rise .35s ease both}
 .card:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(42,27,18,.14)}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.card-img{width:100%;height:180px;object-fit:cover;background:var(--track);display:block}
+.card-img-placeholder{width:100%;height:180px;background:linear-gradient(135deg,var(--track) 0%,var(--cream) 100%);display:flex;align-items:center;justify-content:center;font-size:48px;color:var(--muted)}
+.card-body{padding:18px}
 .card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .card h3{font-family:'Fraunces',serif;font-size:20px;font-weight:700;line-height:1.2}
 .heart{flex:none;width:36px;height:36px;border-radius:50%;border:1.5px solid var(--track);background:var(--cream);color:#C9B8A8;font-size:17px;line-height:1;transition:all .2s}
@@ -142,6 +144,7 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
 .pin.fav{box-shadow:0 0 0 3px rgba(124,45,62,.4),0 3px 8px rgba(42,27,18,.4)}
 .me{display:block;width:12px;height:12px;border-radius:50%;background:var(--sky);border:3px solid #fff;animation:pulse 2s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 3px rgba(62,124,166,.35)}70%{box-shadow:0 0 0 14px rgba(62,124,166,0)}100%{box-shadow:0 0 0 3px rgba(62,124,166,0)}}
+.pop-img{width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;background:var(--track)}
 .pop-t{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:2px}
 .pop-a{color:var(--muted);font-size:12px;margin-bottom:8px}
 .pop-m{display:flex;gap:8px;margin-bottom:8px}
@@ -245,7 +248,8 @@ function makeIcon(p){
 }
 function popupHTML(p){
   const v=p.vibe_attributes,fav=favs.has(p.id);
-  return '<div class="pop-t">'+esc(p.name)+'</div><div class="pop-a">'+esc(p.address||t('address_unknown'))+'</div>'
+  const imgHTML=p.image_url?'<img class="pop-img" src="'+esc(p.image_url)+'" alt="'+esc(p.name)+'" onerror="this.style.display=\'none\'">':'';
+  return imgHTML+'<div class="pop-t">'+esc(p.name)+'</div><div class="pop-a">'+esc(p.address||t('address_unknown'))+'</div>'
   +'<div class="pop-m"><div><b>'+v.noise_level.toFixed(1)+'</b><span>'+t('noise')+'</span></div><div><b>'+v.laptop_friendly.toFixed(1)+'</b><span>'+t('work')+'</span></div><div><b>'+v.romantic.toFixed(1)+'</b><span>'+t('romantic')+'</span></div></div>'
   +'<div class="pop-s">'+esc(summaryFor(v))+'</div>'
   +'<div class="pop-acts"><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button data-fav="'+p.id+'" class="'+(fav?'on':'')+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')">♥</button></div>';
@@ -260,13 +264,15 @@ function met(label,val,color){
 }
 function cardHTML(p){
   const v=p.vibe_attributes,fav=favs.has(p.id);
+  const imgHTML=p.image_url?'<img class="card-img" src="'+esc(p.image_url)+'" alt="'+esc(p.name)+'" onerror="this.outerHTML=\'<div class=card-img-placeholder>☕</div>\'">':'<div class="card-img-placeholder">☕</div>';
   return '<article class="card" style="--spine:'+noiseColor(v.noise_level)+'">'
-  +'<div class="card-top"><h3>'+esc(p.name)+'</h3><button class="heart'+(fav?' on':'')+'" data-fav="'+p.id+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')" aria-label="favorite">♥</button></div>'
+  +imgHTML
+  +'<div class="card-body"><div class="card-top"><h3>'+esc(p.name)+'</h3><button class="heart'+(fav?' on':'')+'" data-fav="'+p.id+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')" aria-label="favorite">♥</button></div>'
   +'<p class="addr">'+esc(p.address||t('address_unknown'))+'</p>'
   +'<div class="mets">'+met(t('noise'),v.noise_level,noiseColor(v.noise_level))+met(t('work'),v.laptop_friendly,'#3E7CA6')+met(t('romantic'),v.romantic,'#7C2D3E')+'</div>'
   +'<p class="sum">'+esc(summaryFor(v))+'</p>'
   +'<div class="acts"><a class="btn primary" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button class="btn ghost" onclick="focusPlace('+p.id+')">'+t('show_map')+'</button></div>'
-  +'</article>';
+  +'</div></article>';
 }
 function emptyHTML(){
   return '<div class="notice"><div class="cup">☕</div><h3>'+t('nothing_found')+'</h3><p>'+t('nothing_hint')+'</p><button class="btn ghost" onclick="resetAll()">'+t('reset')+'</button></div>';
