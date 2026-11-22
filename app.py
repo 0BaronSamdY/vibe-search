@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template_string, jsonify, send_from_directory
+from flask import Flask, render_template_string, jsonify, send_from_directory, request
 import requests
 
 app = Flask(__name__)
@@ -48,7 +48,38 @@ def get_places():
     except Exception:
         return jsonify({"error": "upstream unavailable"}), 502
 
-HTML_TEMPLATE = """
+@app.route('/api/reviews', methods=['POST'])
+def add_review():
+    data = request.json
+    if not data or 'place_id' not in data or 'author_name' not in data:
+        return jsonify({"error": "missing fields"}), 400
+    headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY, "Content-Type": "application/json", "Prefer": "return=minimal"}
+    payload = {
+        "place_id": int(data['place_id']),
+        "author_name": str(data['author_name'])[:100],
+        "rating": min(5, max(1, int(data.get('rating', 5)))),
+        "comment": str(data.get('comment', ''))[:1000]
+    }
+    try:
+        r = requests.post(SUPABASE_URL + "/rest/v1/reviews", json=payload, headers=headers, timeout=15)
+        if r.status_code in (200, 201, 204):
+            return jsonify({"success": True}), 201
+        return jsonify({"error": "failed", "status": r.status_code}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 502
+
+@app.route('/api/reviews/<int:place_id>')
+def get_reviews(place_id):
+    headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY}
+    url = SUPABASE_URL + f"/rest/v1/reviews?place_id=eq.{place_id}&order=created_at.desc&limit=10"
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        r.raise_for_status()
+        return jsonify(r.json())
+    except Exception:
+        return jsonify([]), 200
+
+HTML_TEMPLATE = r"""
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -64,20 +95,16 @@ HTML_TEMPLATE = """
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
 :root{--terracotta:#C4472B;--terracotta-deep:#93301C;--ochre:#E9A13B;--espresso:#2A1B12;--cream:#FAF1E4;--paper:#FFFDF8;--olive:#5F8F4E;--wine:#7C2D3E;--sky:#3E7CA6;--muted:#6B5A4E;--line:rgba(42,27,18,.12);--track:#E8DCC9}
-*{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth}
+*{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
 body{font-family:'Inter',system-ui,sans-serif;color:var(--espresso);background:radial-gradient(900px 420px at 85% -60px,rgba(233,161,59,.20),transparent 60%),radial-gradient(700px 380px at -80px 30%,rgba(196,71,43,.14),transparent 60%),var(--cream);min-height:100vh}
-button{font:inherit;cursor:pointer}a{color:var(--terracotta-deep)}
-:focus-visible{outline:3px solid var(--sky);outline-offset:2px;border-radius:6px}
+button{font:inherit;cursor:pointer}a{color:var(--terracotta-deep)}:focus-visible{outline:3px solid var(--sky);outline-offset:2px;border-radius:6px}
 header{position:sticky;top:0;z-index:500;background:rgba(250,241,228,.92);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
 .head-in{max-width:1180px;margin:0 auto;padding:12px 18px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 .brand{display:flex;align-items:center;gap:10px;font-family:'Fraunces',serif;font-weight:700;font-size:20px;color:var(--terracotta-deep)}
-.langs{display:flex;gap:6px}
-.lang-btn{padding:7px 13px;border-radius:999px;border:1.5px solid rgba(147,48,28,.35);background:transparent;color:var(--terracotta-deep);font-weight:600;font-size:13px;transition:all .2s}
+.langs{display:flex;gap:6px}.lang-btn{padding:7px 13px;border-radius:999px;border:1.5px solid rgba(147,48,28,.35);background:transparent;color:var(--terracotta-deep);font-weight:600;font-size:13px;transition:all .2s}
 .lang-btn.on{background:var(--terracotta);border-color:var(--terracotta);color:var(--paper)}
 .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 60px}
-.hero h1{font-family:'Fraunces',serif;font-size:clamp(34px,6vw,52px);font-weight:700;color:var(--espresso);line-height:1.05}
-.hero h1 em{font-style:italic;color:var(--terracotta)}
+.hero h1{font-family:'Fraunces',serif;font-size:clamp(34px,6vw,52px);font-weight:700;color:var(--espresso);line-height:1.05}.hero h1 em{font-style:italic;color:var(--terracotta)}
 .hero p{margin-top:8px;color:var(--muted);font-size:15px}
 .arches{height:14px;margin:16px 0 20px;opacity:.5;background-image:radial-gradient(circle at 14px 14px,transparent 10px,var(--terracotta) 10.5px,var(--terracotta) 12px,transparent 12.5px);background-size:28px 14px;background-repeat:repeat-x}
 .layout{display:grid;grid-template-columns:1fr;gap:20px}
@@ -89,8 +116,7 @@ header{position:sticky;top:0;z-index:500;background:rgba(250,241,228,.92);backdr
 .legend{position:absolute;left:12px;bottom:12px;z-index:800;display:flex;gap:12px;background:rgba(255,253,248,.94);border:1px solid var(--line);border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;color:var(--muted);box-shadow:0 4px 12px rgba(42,27,18,.14)}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
 .panel{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 10px 26px rgba(42,27,18,.10);display:flex;flex-direction:column;gap:14px}
-.searchrow{position:relative}
-.searchrow input{width:100%;padding:12px 42px 12px 40px;border-radius:12px;border:1.5px solid var(--track);background:var(--cream);font:inherit;color:var(--espresso);transition:border .2s}
+.searchrow{position:relative}.searchrow input{width:100%;padding:12px 42px 12px 40px;border-radius:12px;border:1.5px solid var(--track);background:var(--cream);font:inherit;color:var(--espresso);transition:border .2s}
 .searchrow input:focus{border-color:var(--terracotta);outline:none}
 .searchrow .mag{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted)}
 #clearQ{position:absolute;right:8px;top:50%;transform:translateY(-50%);width:28px;height:28px;border:none;border-radius:50%;background:var(--track);color:var(--espresso);font-size:15px;display:none}
@@ -98,56 +124,42 @@ header{position:sticky;top:0;z-index:500;background:rgba(250,241,228,.92);backdr
 .row2{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 select{flex:1;min-width:170px;padding:10px 12px;border-radius:12px;border:1.5px solid var(--track);background:var(--cream);font:inherit;font-size:13px;font-weight:600;color:var(--espresso)}
 .chip{padding:10px 14px;border-radius:999px;border:1.5px solid var(--track);background:var(--cream);font-size:13px;font-weight:600;color:var(--muted);transition:all .2s}
-.chip:hover{border-color:var(--wine);color:var(--wine)}
-.chip.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}
-.chip b{margin-left:4px}
+.chip:hover{border-color:var(--wine);color:var(--wine)}.chip.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}.chip b{margin-left:4px}
 .presets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .preset{padding:12px 8px;border-radius:12px;border:1.5px solid var(--track);background:var(--cream);font-weight:600;font-size:13px;color:var(--espresso);transition:all .2s}
-.preset:hover{transform:translateY(-1px);border-color:var(--ochre)}
-.preset.on{background:var(--ochre);border-color:var(--ochre);color:var(--espresso);box-shadow:0 6px 16px rgba(233,161,59,.4)}
+.preset:hover{transform:translateY(-1px);border-color:var(--ochre)}.preset.on{background:var(--ochre);border-color:var(--ochre);color:var(--espresso);box-shadow:0 6px 16px rgba(233,161,59,.4)}
 .fgroup label{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;margin-bottom:6px}
 .fgroup .val{margin-left:auto;background:var(--espresso);color:var(--cream);font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;font-variant-numeric:tabular-nums}
 input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:6px;border-radius:6px;background:var(--track);margin:7px 0}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;border-radius:50%;background:var(--terracotta);border:3px solid var(--paper);box-shadow:0 2px 6px rgba(42,27,18,.3);cursor:grab}
 input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--terracotta);border:3px solid var(--paper);box-shadow:0 2px 6px rgba(42,27,18,.3);cursor:grab}
 input[type=range]::-moz-range-track{height:6px;border-radius:6px;background:var(--track)}
-.stats{margin:18px 2px 12px;font-size:14px;font-weight:600;color:var(--muted)}
-.stats b{color:var(--terracotta-deep)}
+.stats{margin:18px 2px 12px;font-size:14px;font-weight:600;color:var(--muted)}.stats b{color:var(--terracotta-deep)}
 .places{display:flex;flex-direction:column;gap:14px}
 .card{background:var(--paper);border:1px solid var(--line);border-left:6px solid var(--spine,var(--terracotta));border-radius:16px;overflow:hidden;box-shadow:0 6px 18px rgba(42,27,18,.08);transition:transform .2s,box-shadow .2s;animation:rise .35s ease both}
 .card:hover{transform:translateY(-2px);box-shadow:0 12px 28px rgba(42,27,18,.14)}
 @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .card-img{width:100%;height:180px;object-fit:cover;background:var(--track);display:block}
 .card-img-placeholder{width:100%;height:180px;background:linear-gradient(135deg,var(--track) 0%,var(--cream) 100%);display:flex;align-items:center;justify-content:center;font-size:48px;color:var(--muted)}
-.card-body{padding:18px}
-.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.card-body{padding:18px}.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 .card h3{font-family:'Fraunces',serif;font-size:20px;font-weight:700;line-height:1.2}
 .heart{flex:none;width:36px;height:36px;border-radius:50%;border:1.5px solid var(--track);background:var(--cream);color:#C9B8A8;font-size:17px;line-height:1;transition:all .2s}
-.heart:hover{border-color:var(--wine);color:var(--wine)}
-.heart.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}
-.addr{color:var(--muted);font-size:13px;margin:4px 0 12px}
-.mets{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}
-.met{display:flex;flex-direction:column;gap:3px}
-.met-l{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.met-v{font-family:'Fraunces',serif;font-size:20px;font-weight:700}
-.bar{height:5px;border-radius:5px;background:var(--track);overflow:hidden}
-.bar i{display:block;height:100%;border-radius:5px;transition:width .4s ease}
+.heart:hover{border-color:var(--wine);color:var(--wine)}.heart.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}
+.addr{color:var(--muted);font-size:13px;margin:4px 0 12px}.dist{font-size:12px;color:var(--sky);margin-bottom:8px}
+.mets{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:12px}.met{display:flex;flex-direction:column;gap:3px}
+.met-l{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.met-v{font-family:'Fraunces',serif;font-size:20px;font-weight:700}
+.bar{height:5px;border-radius:5px;background:var(--track);overflow:hidden}.bar i{display:block;height:100%;border-radius:5px;transition:width .4s ease}
 .sum{background:var(--cream);border-radius:10px;padding:11px 13px;font-size:13.5px;line-height:1.5;color:var(--muted);margin-bottom:14px}
 .acts{display:flex;gap:8px}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;border-radius:11px;font-weight:600;font-size:13.5px;text-decoration:none;border:1.5px solid transparent;transition:all .2s}
-.btn.primary{background:var(--terracotta);color:var(--paper);flex:1}
-.btn.primary:hover{background:var(--terracotta-deep)}
-.btn.ghost{background:transparent;border-color:rgba(147,48,28,.4);color:var(--terracotta-deep)}
-.btn.ghost:hover{border-color:var(--terracotta);background:rgba(196,71,43,.08)}
+.btn.primary{background:var(--terracotta);color:var(--paper);flex:1}.btn.primary:hover{background:var(--terracotta-deep)}
+.btn.ghost{background:transparent;border-color:rgba(147,48,28,.4);color:var(--terracotta-deep)}.btn.ghost:hover{border-color:var(--terracotta);background:rgba(196,71,43,.08)}
 .notice{background:var(--paper);border:1px dashed rgba(147,48,28,.4);border-radius:16px;padding:34px 22px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}
-.notice .cup{font-size:38px}
-.notice h3{font-family:'Fraunces',serif;font-size:20px}
-.notice p{color:var(--muted);font-size:14px}
+.notice .cup{font-size:38px}.notice h3{font-family:'Fraunces',serif;font-size:20px}.notice p{color:var(--muted);font-size:14px}
 footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
 .leaflet-container{font-family:'Inter',sans-serif;background:var(--track)}
 .leaflet-popup-content-wrapper{background:var(--paper);color:var(--espresso);border-radius:14px;border:1px solid var(--line);box-shadow:0 12px 30px rgba(42,27,18,.25)}
-.leaflet-popup-tip{background:var(--paper)}
-.leaflet-popup-content{margin:14px 16px;font-size:13px;line-height:1.45}
+.leaflet-popup-tip{background:var(--paper)}.leaflet-popup-content{margin:14px 16px;font-size:13px;line-height:1.45}
 .leaflet-bar a{background:var(--paper);color:var(--terracotta-deep);border-bottom:1px solid var(--line)}
 .vs-pin-wrap{background:none;border:none}
 .pin{display:block;width:16px;height:16px;border-radius:50%;border:3px solid var(--paper);box-shadow:0 3px 8px rgba(42,27,18,.4);color:var(--paper);font-size:9px;line-height:16px;text-align:center}
@@ -155,21 +167,21 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
 .me{display:block;width:12px;height:12px;border-radius:50%;background:var(--sky);border:3px solid #fff;animation:pulse 2s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 3px rgba(62,124,166,.35)}70%{box-shadow:0 0 0 14px rgba(62,124,166,0)}100%{box-shadow:0 0 0 3px rgba(62,124,166,0)}}
 .pop-img{width:100%;height:120px;object-fit:cover;border-radius:8px;margin-bottom:8px;background:var(--track)}
-.pop-t{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:2px}
-.pop-a{color:var(--muted);font-size:12px;margin-bottom:8px}
-.pop-m{display:flex;gap:8px;margin-bottom:8px}
-.pop-m div{flex:1;text-align:center;background:var(--cream);border-radius:8px;padding:6px 2px}
-.pop-m b{display:block;font-family:'Fraunces',serif;font-size:15px}
-.pop-m span{font-size:10px;color:var(--muted)}
+.pop-t{font-family:'Fraunces',serif;font-weight:700;font-size:16px;margin-bottom:2px}.pop-a{color:var(--muted);font-size:12px;margin-bottom:8px}.pop-dist{font-size:11px;color:var(--sky);margin-bottom:6px}
+.pop-m{display:flex;gap:8px;margin-bottom:8px}.pop-m div{flex:1;text-align:center;background:var(--cream);border-radius:8px;padding:6px 2px}
+.pop-m b{display:block;font-family:'Fraunces',serif;font-size:15px}.pop-m span{font-size:10px;color:var(--muted)}
 .pop-s{color:var(--muted);font-size:12px;margin-bottom:10px}
-.pop-acts{display:flex;gap:6px}
-.pop-acts a,.pop-acts button{flex:1;text-align:center;padding:7px 6px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none}
-.pop-acts a{background:var(--terracotta);color:var(--paper)}
-.pop-acts button{border:1.5px solid var(--track);background:var(--cream);color:#C9B8A8}
-.pop-acts button.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}
+.pop-reviews{border-top:1px solid var(--line);padding-top:8px;margin-top:8px}.pop-reviews h4{font-size:11px;font-weight:600;color:var(--muted);margin-bottom:6px}
+.pop-review{font-size:11px;margin-bottom:6px}.pop-review b{color:var(--espresso)}.pop-review .stars{color:var(--ochre)}.pop-review .cmt{color:var(--muted);display:block;margin-top:2px}
+.pop-review-form{margin-top:8px}.pop-review-form input,.pop-review-form textarea,.pop-review-form select{width:100%;padding:6px 8px;border:1px solid var(--track);border-radius:6px;font:inherit;font-size:11px;margin-bottom:4px;background:var(--cream);color:var(--espresso)}
+.pop-review-form textarea{resize:vertical;min-height:40px}.pop-review-form button{width:100%;padding:7px;background:var(--terracotta);color:var(--paper);border:none;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer}
+.pop-review-form button:hover{background:var(--terracotta-deep)}
+.pop-acts{display:flex;gap:6px;margin-top:8px}.pop-acts a,.pop-acts button{flex:1;text-align:center;padding:7px 6px;border-radius:8px;font-size:12px;font-weight:600;text-decoration:none}
+.pop-acts a{background:var(--terracotta);color:var(--paper)}.pop-acts button{border:1.5px solid var(--track);background:var(--cream);color:#C9B8A8}.pop-acts button.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}
+#toast{position:fixed;left:50%;bottom:22px;transform:translate(-50%,16px);z-index:1200;background:var(--espresso);color:var(--cream);padding:12px 18px;border-radius:12px;font-size:14px;font-weight:600;display:flex;gap:14px;align-items:center;box-shadow:0 12px 30px rgba(42,27,18,.4);opacity:0;pointer-events:none;transition:all .3s}
+#toast.show{opacity:1;transform:translate(-50%,0);pointer-events:auto}#toast button{border:none;background:transparent;color:var(--ochre);font-weight:700;font-size:14px}
 .install-banner{position:fixed;bottom:0;left:0;right:0;background:var(--terracotta);color:var(--paper);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;z-index:1000;transform:translateY(100%);transition:transform .3s}
-.install-banner.show{transform:translateY(0)}
-.install-banner button{background:var(--paper);color:var(--terracotta);border:none;padding:8px 16px;border-radius:8px;font-weight:600}
+.install-banner.show{transform:translateY(0)}.install-banner button{background:var(--paper);color:var(--terracotta);border:none;padding:8px 16px;border-radius:8px;font-weight:600}
 @media(min-width:980px){.layout{grid-template-columns:minmax(400px,46%) 1fr;align-items:start}.map-col{position:sticky;top:84px}.map-wrap{height:calc(100vh - 120px);min-height:480px}}
 </style>
 </head>
@@ -230,13 +242,15 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
   </div>
   <footer><span data-i18n="data_note">Данные © OpenStreetMap contributors</span> · Vibe Search</footer>
 </div>
+<div id="toast"></div>
 <div class="install-banner" id="installBanner">
   <span data-i18n="install_text">Установить приложение?</span>
   <button id="installBtn" data-i18n="install_btn">Установить</button>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const T={ru:{subtitle:"Болонья · найди место под настроение",search_ph:"Поиск по названию или адресу…",sort_default:"Сортировка: по умолчанию",sort_quiet:"Сначала тихие",sort_work:"Лучшие для работы",sort_romantic:"Самые романтичные",sort_name:"По имени А–Я",sort_nearby:"Ближайшие ко мне",preset_work:"🤫 Тихо для работы",preset_date:"💑 Для свидания",preset_party:"🎉 Тусовка",favs:"Избранное",reset:"Сбросить",filter_noise:"Шум",filter_laptop:"Для работы",filter_romantic:"Романтика",legend_quiet:"тихо",legend_mid:"средне",legend_loud:"шумно",found:"Найдено",of:"из",nothing_found:"Ничего не найдено",nothing_hint:"Попробуй смягчить фильтры или сбросить их.",error_title:"Не удалось загрузить места",retry:"Повторить",loading:"Загружаем места…",noise:"Шум",work:"Работа",romantic:"Романтика",no_description:"Описание появится позже.",route:"Маршрут",show_map:"На карте",address_unknown:"адрес уточняется",fav_add:"Добавлено в избранное",fav_remove:"Убрано из избранного",undo:"Вернуть",loc_err:"Не удалось определить местоположение",fit_title:"Показать все места",loc_title:"Моё местоположение",data_note:"Данные © OpenStreetMap contributors",install_text:"Установить приложение?",install_btn:"Установить",km_away:"км от вас",m_away:"м от вас"},it:{subtitle:"Bologna · trova il posto giusto",search_ph:"Cerca per nome o indirizzo…",sort_default:"Ordina: predefinito",sort_quiet:"Prima i silenziosi",sort_work:"Migliori per lavorare",sort_romantic:"Più romantici",sort_name:"Nome A–Z",sort_nearby:"Più vicini a me",preset_work:"🤫 Silenzioso",preset_date:"💑 Appuntamento",preset_party:"🎉 Festa",favs:"Preferiti",reset:"Azzera",filter_noise:"Rumore",filter_laptop:"Lavoro",filter_romantic:"Romantico",legend_quiet:"silenzioso",legend_mid:"medio",legend_loud:"rumoroso",found:"Trovati",of:"di",nothing_found:"Nessun risultato",nothing_hint:"Prova ad allargare i filtri o ad azzerarli.",error_title:"Impossibile caricare i luoghi",retry:"Riprova",loading:"Caricamento…",noise:"Rumore",work:"Lavoro",romantic:"Romantico",no_description:"Descrizione in arrivo.",route:"Percorso",show_map:"Mappa",address_unknown:"indirizzo in arrivo",fav_add:"Aggiunto ai preferiti",fav_remove:"Rimosso dai preferiti",undo:"Annulla",loc_err:"Posizione non disponibile",fit_title:"Mostra tutti",loc_title:"La mia posizione",data_note:"Dati © OpenStreetMap contributors",install_text:"Installare l'app?",install_btn:"Installa",km_away:"km da te",m_away:"m da te"},en:{subtitle:"Bologna · find a place that matches your mood",search_ph:"Search by name or address…",sort_default:"Sort: default",sort_quiet:"Quietest first",sort_work:"Best for work",sort_romantic:"Most romantic",sort_name:"Name A–Z",sort_nearby:"Nearest to me",preset_work:"🤫 Quiet for work",preset_date:"💑 For a date",preset_party:"🎉 Party",favs:"Favorites",reset:"Reset",filter_noise:"Noise",filter_laptop:"For work",filter_romantic:"Romantic",legend_quiet:"quiet",legend_mid:"medium",legend_loud:"loud",found:"Found",of:"of",nothing_found:"Nothing found",nothing_hint:"Try loosening the filters or reset them.",error_title:"Could not load places",retry:"Retry",loading:"Loading places…",noise:"Noise",work:"Work",romantic:"Romantic",no_description:"Description coming soon.",route:"Route",show_map:"On map",address_unknown:"address pending",fav_add:"Added to favorites",fav_remove:"Removed from favorites",undo:"Undo",loc_err:"Location unavailable",fit_title:"Show all places",loc_title:"My location",data_note:"Data © OpenStreetMap contributors",install_text:"Install the app?",install_btn:"Install",km_away:"km away",m_away:"m away"}};
+const T={ru:{subtitle:"Болонья · найди место под настроение",search_ph:"Поиск по названию или адресу…",sort_default:"Сортировка: по умолчанию",sort_quiet:"Сначала тихие",sort_work:"Лучшие для работы",sort_romantic:"Самые романтичные",sort_name:"По имени А–Я",sort_nearby:"Ближайшие ко мне",preset_work:"🤫 Тихо для работы",preset_date:"💑 Для свидания",preset_party:"🎉 Тусовка",favs:"Избранное",reset:"Сбросить",filter_noise:"Шум",filter_laptop:"Для работы",filter_romantic:"Романтика",legend_quiet:"тихо",legend_mid:"средне",legend_loud:"шумно",found:"Найдено",of:"из",nothing_found:"Ничего не найдено",nothing_hint:"Попробуй смягчить фильтры или сбросить их.",error_title:"Не удалось загрузить места",retry:"Повторить",loading:"Загружаем места…",noise:"Шум",work:"Работа",romantic:"Романтика",no_description:"Описание появится позже.",route:"Маршрут",show_map:"На карте",address_unknown:"адрес уточняется",fav_add:"Добавлено в избранное",fav_remove:"Убрано из избранного",undo:"Вернуть",loc_err:"Не удалось определить местоположение",fit_title:"Показать все места",loc_title:"Моё местоположение",data_note:"Данные © OpenStreetMap contributors",install_text:"Установить приложение?",install_btn:"Установить",km_away:"км от вас",m_away:"м от вас",reviews:"Отзывы",no_reviews:"Пока нет отзывов",your_name:"Твоё имя",comment:"Комментарий",submit_review:"Отправить",review_added:"✅ Отзыв добавлен!",review_error:"❌ Ошибка при отправке",review_load_err:"Не удалось загрузить"},it:{subtitle:"Bologna · trova il posto giusto",search_ph:"Cerca per nome o indirizzo…",sort_default:"Ordina: predefinito",sort_quiet:"Prima i silenziosi",sort_work:"Migliori per lavorare",sort_romantic:"Più romantici",sort_name:"Nome A–Z",sort_nearby:"Più vicini a me",preset_work:"🤫 Silenzioso",preset_date:"💑 Appuntamento",preset_party:"🎉 Festa",favs:"Preferiti",reset:"Azzera",filter_noise:"Rumore",filter_laptop:"Lavoro",filter_romantic:"Romantico",legend_quiet:"silenzioso",legend_mid:"medio",legend_loud:"rumoroso",found:"Trovati",of:"di",nothing_found:"Nessun risultato",nothing_hint:"Prova ad allargare i filtri o ad azzerarli.",error_title:"Impossibile caricare i luoghi",retry:"Riprova",loading:"Caricamento…",noise:"Rumore",work:"Lavoro",romantic:"Romantico",no_description:"Descrizione in arrivo.",route:"Percorso",show_map:"Mappa",address_unknown:"indirizzo in arrivo",fav_add:"Aggiunto ai preferiti",fav_remove:"Rimosso dai preferiti",undo:"Annulla",loc_err:"Posizione non disponibile",fit_title:"Mostra tutti",loc_title:"La mia posizione",data_note:"Dati © OpenStreetMap contributors",install_text:"Installare l'app?",install_btn:"Installa",km_away:"km da te",m_away:"m da te",reviews:"Recensioni",no_reviews:"Nessuna recensione",your_name:"Il tuo nome",comment:"Commento",submit_review:"Invia",review_added:"✅ Recensione aggiunta!",review_error:"❌ Errore nell'invio",review_load_err:"Impossibile caricare"},en:{subtitle:"Bologna · find a place that matches your mood",search_ph:"Search by name or address…",sort_default:"Sort: default",sort_quiet:"Quietest first",sort_work:"Best for work",sort_romantic:"Most romantic",sort_name:"Name A–Z",sort_nearby:"Nearest to me",preset_work:"🤫 Quiet for work",preset_date:"💑 For a date",preset_party:"🎉 Party",favs:"Favorites",reset:"Reset",filter_noise:"Noise",filter_laptop:"For work",filter_romantic:"Romantic",legend_quiet:"quiet",legend_mid:"medium",legend_loud:"loud",found:"Found",of:"of",nothing_found:"Nothing found",nothing_hint:"Try loosening the filters or reset them.",error_title:"Could not load places",retry:"Retry",loading:"Loading places…",noise:"Noise",work:"Work",romantic:"Romantic",no_description:"Description coming soon.",route:"Route",show_map:"On map",address_unknown:"address pending",fav_add:"Added to favorites",fav_remove:"Removed from favorites",undo:"Undo",loc_err:"Location unavailable",fit_title:"Show all places",loc_title:"My location",data_note:"Data © OpenStreetMap contributors",install_text:"Install the app?",install_btn:"Install",km_away:"km away",m_away:"m away",reviews:"Reviews",no_reviews:"No reviews yet",your_name:"Your name",comment:"Comment",submit_review:"Submit",review_added:"✅ Review added!",review_error:"❌ Submission error",review_load_err:"Could not load"}};
+
 let lang=localStorage.getItem('vs-lang')||'ru';
 if(!T[lang])lang='ru';
 let places=[],markers={},map=null,userMarker=null,toastTimer=null,loadFailed=false,userLocation=null;
@@ -244,8 +258,9 @@ let favs=new Set();
 try{favs=new Set(JSON.parse(localStorage.getItem('vs-favs')||'[]'))}catch(e){}
 const state={q:'',sort:'default',favOnly:false,preset:null};
 const $=id=>document.getElementById(id);
+
 function t(k){return (T[lang]&&T[lang][k])||k}
-function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
 function num(x){return typeof x==='number'&&isFinite(x)?x:0.5}
 function noiseColor(v){return v<0.4?'#5F8F4E':v<0.7?'#E9A13B':'#C4472B'}
 function summaryFor(v){return (v&&v['summary_'+lang])||v.summary||t('no_description')}
@@ -262,48 +277,83 @@ function setLanguage(l){
   if(loadFailed)renderError();else applyFilters();
 }
 
+async function submitReview(e, placeId){
+  e.preventDefault();
+  const form=e.target;
+  const data={
+    place_id:placeId,
+    author_name:form.querySelector('input[name="author"]').value.trim(),
+    comment:form.querySelector('textarea[name="comment"]').value.trim(),
+    rating:parseInt(form.querySelector('select[name="rating"]').value)
+  };
+  if(!data.author_name){toast('⚠️ '+t('your_name'));return;}
+  try{
+    const r=await fetch('/api/reviews',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+    if(r.ok){toast(t('review_added'));form.reset();loadReviews(placeId);}
+    else{toast(t('review_error'));}
+  }catch(err){toast(t('review_error'));}
+}
+
+async function loadReviews(placeId){
+  const el=document.getElementById('reviews-'+placeId);
+  if(!el)return;
+  try{
+    const r=await fetch('/api/reviews/'+placeId);
+    const reviews=await r.json();
+    if(!reviews||reviews.length===0){el.innerHTML='<div style="font-size:11px;color:var(--muted)">'+t('no_reviews')+'</div>';return;}
+    el.innerHTML=reviews.slice(0,3).map(rv=>{
+      const stars='⭐'.repeat(Math.min(5,Math.max(1,rv.rating||5)));
+      return '<div class="pop-review"><b>'+esc(rv.author_name)+'</b> <span class="stars">'+stars+'</span><span class="cmt">'+esc(rv.comment||'')+'</span></div>';
+    }).join('');
+  }catch(err){el.innerHTML='<div style="font-size:11px;color:var(--muted)">'+t('review_load_err')+'</div>';}
+}
+
 function makeIcon(p){
   const v=p.vibe_attributes,fav=favs.has(p.id);
   return L.divIcon({className:'vs-pin-wrap',html:'<span class="pin'+(fav?' fav':'')+'" style="background:'+noiseColor(v.noise_level)+'">'+(fav?'♥':'')+'</span>',iconSize:[22,22],iconAnchor:[11,11],popupAnchor:[0,-10]});
 }
+
 function popupHTML(p){
   const v=p.vibe_attributes,fav=favs.has(p.id);
   const imgHTML=p.image_url?'<img class="pop-img" src="'+esc(p.image_url)+'" alt="'+esc(p.name)+'" onerror="this.style.display=\'none\'">':'';
-  const distHTML=userLocation?'<div style="font-size:11px;color:var(--sky);margin-bottom:6px">📍 '+formatDistance(haversine(userLocation[0],userLocation[1],p.latitude,p.longitude))+'</div>':'';
+  const distHTML=userLocation?'<div class="pop-dist">📍 '+formatDistance(haversine(userLocation[0],userLocation[1],p.latitude,p.longitude))+'</div>':'';
   return imgHTML+distHTML+'<div class="pop-t">'+esc(p.name)+'</div><div class="pop-a">'+esc(p.address||t('address_unknown'))+'</div>'
   +'<div class="pop-m"><div><b>'+v.noise_level.toFixed(1)+'</b><span>'+t('noise')+'</span></div><div><b>'+v.laptop_friendly.toFixed(1)+'</b><span>'+t('work')+'</span></div><div><b>'+v.romantic.toFixed(1)+'</b><span>'+t('romantic')+'</span></div></div>'
   +'<div class="pop-s">'+esc(summaryFor(v))+'</div>'
+  +'<div class="pop-reviews"><h4>💬 '+t('reviews')+'</h4><div id="reviews-'+p.id+'"><div style="font-size:11px;color:var(--muted)">'+t('loading')+'</div></div>'
+  +'<form class="pop-review-form" onsubmit="submitReview(event,'+p.id+')"><input type="text" name="author" placeholder="'+esc(t('your_name'))+'" required maxlength="100"><textarea name="comment" placeholder="'+esc(t('comment'))+'" maxlength="1000"></textarea><select name="rating"><option value="5">⭐⭐⭐⭐⭐</option><option value="4">⭐⭐⭐⭐</option><option value="3">⭐⭐⭐</option><option value="2">⭐⭐</option><option value="1">⭐</option></select><button type="submit">'+esc(t('submit_review'))+'</button></form></div>'
   +'<div class="pop-acts"><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button data-fav="'+p.id+'" class="'+(fav?'on':'')+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')">♥</button></div>';
 }
+
 function renderMarkers(list){
   if(!map)return;
   Object.keys(markers).forEach(k=>map.removeLayer(markers[k]));markers={};
-  list.forEach(p=>{const mk=L.marker([p.latitude,p.longitude],{icon:makeIcon(p)}).addTo(map);mk.bindPopup(popupHTML(p),{maxWidth:270});markers[p.id]=mk;});
+  list.forEach(p=>{
+    const mk=L.marker([p.latitude,p.longitude],{icon:makeIcon(p)}).addTo(map);
+    mk.bindPopup(popupHTML(p),{maxWidth:280});
+    mk.on('popupopen',()=>{setTimeout(()=>loadReviews(p.id),150);});
+    markers[p.id]=mk;
+  });
 }
+
 function met(label,val,color){
   return '<div class="met"><span class="met-l">'+label+'</span><span class="met-v">'+val.toFixed(1)+'</span><span class="bar"><i style="width:'+Math.round(val*100)+'%;background:'+color+'"></i></span></div>';
 }
+
 function cardHTML(p){
   const v=p.vibe_attributes,fav=favs.has(p.id);
   const imgHTML=p.image_url?'<img class="card-img" src="'+esc(p.image_url)+'" alt="'+esc(p.name)+'" onerror="this.outerHTML=\'<div class=card-img-placeholder>☕</div>\'">':'<div class="card-img-placeholder">☕</div>';
-  const distHTML=userLocation?'<div style="font-size:12px;color:var(--sky);margin-bottom:8px">📍 '+formatDistance(haversine(userLocation[0],userLocation[1],p.latitude,p.longitude))+'</div>':'';
-  return '<article class="card" style="--spine:'+noiseColor(v.noise_level)+'">'
-  +imgHTML
+  const distHTML=userLocation?'<div class="dist">📍 '+formatDistance(haversine(userLocation[0],userLocation[1],p.latitude,p.longitude))+'</div>':'';
+  return '<article class="card" style="--spine:'+noiseColor(v.noise_level)+'">'+imgHTML
   +'<div class="card-body"><div class="card-top"><h3>'+esc(p.name)+'</h3><button class="heart'+(fav?' on':'')+'" data-fav="'+p.id+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')" aria-label="favorite">♥</button></div>'
-  +'<p class="addr">'+esc(p.address||t('address_unknown'))+'</p>'
-  +distHTML
+  +'<p class="addr">'+esc(p.address||t('address_unknown'))+'</p>'+distHTML
   +'<div class="mets">'+met(t('noise'),v.noise_level,noiseColor(v.noise_level))+met(t('work'),v.laptop_friendly,'#3E7CA6')+met(t('romantic'),v.romantic,'#7C2D3E')+'</div>'
   +'<p class="sum">'+esc(summaryFor(v))+'</p>'
-  +'<div class="acts"><a class="btn primary" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button class="btn ghost" onclick="focusPlace('+p.id+')">'+t('show_map')+'</button></div>'
-  +'</div></article>';
+  +'<div class="acts"><a class="btn primary" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button class="btn ghost" onclick="focusPlace('+p.id+')">'+t('show_map')+'</button></div></div></article>';
 }
-function emptyHTML(){
-  return '<div class="notice"><div class="cup">☕</div><h3>'+t('nothing_found')+'</h3><p>'+t('nothing_hint')+'</p><button class="btn ghost" onclick="resetAll()">'+t('reset')+'</button></div>';
-}
-function renderError(){
-  $('stats').textContent='';
-  $('places').innerHTML='<div class="notice"><div class="cup">⚠️</div><h3>'+t('error_title')+'</h3><button class="btn primary" onclick="loadPlaces()">'+t('retry')+'</button></div>';
-}
+
+function emptyHTML(){return '<div class="notice"><div class="cup">☕</div><h3>'+t('nothing_found')+'</h3><p>'+t('nothing_hint')+'</p><button class="btn ghost" onclick="resetAll()">'+t('reset')+'</button></div>';}
+function renderError(){$('stats').textContent='';$('places').innerHTML='<div class="notice"><div class="cup">⚠️</div><h3>'+t('error_title')+'</h3><button class="btn primary" onclick="loadPlaces()">'+t('retry')+'</button></div>';}
 
 function applyFilters(){
   const nMin=+$('nMin').value,nMax=+$('nMax').value,lMin=+$('lMin').value,lMax=+$('lMax').value,rMin=+$('rMin').value,rMax=+$('rMax').value;
@@ -341,16 +391,8 @@ function initMap(){
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
   setTimeout(()=>map.invalidateSize(),60);
 }
-function fitAll(){
-  if(!map||!places.length)return;
-  map.fitBounds(L.latLngBounds(places.map(p=>[p.latitude,p.longitude])),{padding:[36,36],maxZoom:16});
-}
-function focusPlace(id){
-  const p=places.find(x=>x.id===id);if(!p||!map)return;
-  $('mapWrap').scrollIntoView({behavior:'smooth',block:'start'});
-  map.setView([p.latitude,p.longitude],17,{animate:true});
-  if(markers[id])markers[id].openPopup();
-}
+function fitAll(){if(!map||!places.length)return;map.fitBounds(L.latLngBounds(places.map(p=>[p.latitude,p.longitude])),{padding:[36,36],maxZoom:16});}
+function focusPlace(id){const p=places.find(x=>x.id===id);if(!p||!map)return;$('mapWrap').scrollIntoView({behavior:'smooth',block:'start'});map.setView([p.latitude,p.longitude],17,{animate:true});if(markers[id])markers[id].openPopup();}
 function locate(){
   if(!navigator.geolocation){toast(t('loc_err'));return;}
   navigator.geolocation.getCurrentPosition(pos=>{
@@ -358,8 +400,7 @@ function locate(){
     if(userMarker)map.removeLayer(userMarker);
     userMarker=L.marker(userLocation,{icon:L.divIcon({className:'vs-pin-wrap',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
     map.setView(userLocation,15,{animate:true});
-    if(state.sort==='nearby')applyFilters();
-    else toast('📍 '+formatDistance(0));
+    if(state.sort==='nearby')applyFilters();else toast('📍 OK');
   },()=>toast(t('loc_err')),{timeout:8000,enableHighAccuracy:true});
 }
 
@@ -368,16 +409,10 @@ function setFav(id,on){
   if(on)favs.add(id);else favs.delete(id);
   localStorage.setItem('vs-favs',JSON.stringify(Array.from(favs)));
   document.querySelectorAll('[data-fav="'+id+'"]').forEach(b=>{b.classList.toggle('on',on);b.setAttribute('aria-pressed',on);});
-  const p=places.find(x=>x.id===id);
-  if(p&&markers[id])markers[id].setIcon(makeIcon(p));
-  updateFavCount();
-  if(state.favOnly)applyFilters();
+  const p=places.find(x=>x.id===id);if(p&&markers[id])markers[id].setIcon(makeIcon(p));
+  updateFavCount();if(state.favOnly)applyFilters();
 }
-function toggleFav(id){
-  const on=!favs.has(id);setFav(id,on);
-  if(on)toast(t('fav_add'));
-  else toast(t('fav_remove'),t('undo'),function(){setFav(id,true)});
-}
+function toggleFav(id){const on=!favs.has(id);setFav(id,on);if(on)toast(t('fav_add'));else toast(t('fav_remove'),t('undo'),function(){setFav(id,true)});}
 function toast(msg,label,fn){
   const el=$('toast');clearTimeout(toastTimer);
   el.innerHTML='<span>'+esc(msg)+'</span>'+(label?'<button id="toastAct">'+esc(label)+'</button>':'');
@@ -397,37 +432,23 @@ function applyPreset(type){
 function resetAll(){
   state.q='';state.sort='default';state.favOnly=false;state.preset=null;
   $('q').value='';$('sortSel').value='default';
-  ['nMin','lMin','rMin'].forEach(id=>$(id).value=0);
-  ['nMax','lMax','rMax'].forEach(id=>$(id).value=1);
+  ['nMin','lMin','rMin'].forEach(id=>$(id).value=0);['nMax','lMax','rMax'].forEach(id=>$(id).value=1);
   applyFilters();fitAll();
 }
 
 function loadPlaces(){
-  loadFailed=false;
-  $('stats').textContent=t('loading');
-  $('places').innerHTML='';
+  loadFailed=false;$('stats').textContent=t('loading');$('places').innerHTML='';
   fetch('/api/places',{cache:'no-store'})
   .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(data=>{
     if(!Array.isArray(data))throw new Error('bad data');
     places=data.filter(p=>p&&p.latitude!=null&&p.longitude!=null).map(p=>{
-      let v=p.vibe_attributes;
-      if(Array.isArray(v))v=v[0]||{};
-      if(!v||typeof v!=='object')v={};
-      p.vibe_attributes={
-        noise_level:num(v.noise_level),
-        laptop_friendly:num(v.laptop_friendly),
-        romantic:num(v.romantic),
-        summary:v.summary||'',
-        summary_ru:v.summary_ru||'',
-        summary_it:v.summary_it||'',
-        summary_en:v.summary_en||''
-      };
+      let v=p.vibe_attributes;if(Array.isArray(v))v=v[0]||{};if(!v||typeof v!=='object')v={};
+      p.vibe_attributes={noise_level:num(v.noise_level),laptop_friendly:num(v.laptop_friendly),romantic:num(v.romantic),summary:v.summary||'',summary_ru:v.summary_ru||'',summary_it:v.summary_it||'',summary_en:v.summary_en||''};
       return p;
     });
     initMap();fitAll();applyFilters();
-  })
-  .catch(()=>{loadFailed=true;renderError();});
+  }).catch(err=>{loadFailed=true;console.error(err);renderError();});
 }
 
 [['nMin','nMax'],['lMin','lMax'],['rMin','rMax']].forEach(pair=>{
@@ -439,34 +460,15 @@ $('q').addEventListener('input',e=>{state.q=e.target.value.trim().toLowerCase();
 $('clearQ').onclick=()=>{$('q').value='';state.q='';applyFilters();};
 $('sortSel').onchange=e=>{state.sort=e.target.value;applyFilters();};
 $('favChip').onclick=()=>{state.favOnly=!state.favOnly;applyFilters();};
-$('resetBtn').onclick=resetAll;
-$('fitBtn').onclick=fitAll;
-$('locBtn').onclick=locate;
+$('resetBtn').onclick=resetAll;$('fitBtn').onclick=fitAll;$('locBtn').onclick=locate;
 window.addEventListener('resize',()=>{if(map)map.invalidateSize();});
 
-// PWA install prompt
 let deferredPrompt;
-window.addEventListener('beforeinstallprompt',e=>{
-  e.preventDefault();
-  deferredPrompt=e;
-  $('installBanner').classList.add('show');
-});
-$('installBtn').onclick=async()=>{
-  if(!deferredPrompt)return;
-  deferredPrompt.prompt();
-  await deferredPrompt.userChoice;
-  deferredPrompt=null;
-  $('installBanner').classList.remove('show');
-};
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;$('installBanner').classList.add('show');});
+$('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBanner').classList.remove('show');};
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/service-worker.js').catch(()=>{});}
 
-// Register service worker
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
-}
-
-setLanguage(lang);
-updateFavCount();
-loadPlaces();
+setLanguage(lang);updateFavCount();loadPlaces();
 </script>
 </body>
 </html>
