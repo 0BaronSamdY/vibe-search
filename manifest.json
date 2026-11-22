@@ -1,0 +1,18 @@
+{
+  "name": "Vibe Search Bologna",
+  "short_name": "Vibe Search",
+  "description": "Найди кафе в Болонье под настроение",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAF1E4",
+  "theme_color": "#C4472B",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2935/2935226.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

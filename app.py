@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template_string, jsonify
+from flask import Flask, render_template_string, jsonify, send_from_directory
 import requests
 
 app = Flask(__name__)
@@ -20,6 +20,14 @@ def index():
 @app.route('/healthz')
 def healthz():
     return 'ok'
+
+@app.route('/manifest.json')
+def manifest():
+    return send_from_directory('.', 'manifest.json', mimetype='application/json')
+
+@app.route('/service-worker.js')
+def service_worker():
+    return send_from_directory('.', 'service-worker.js', mimetype='application/javascript')
 
 @app.route('/api/places')
 def get_places():
@@ -47,6 +55,8 @@ HTML_TEMPLATE = """
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#C4472B">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2935/2935226.png">
 <title>Vibe Search · Bologna</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -157,6 +167,9 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
 .pop-acts a{background:var(--terracotta);color:var(--paper)}
 .pop-acts button{border:1.5px solid var(--track);background:var(--cream);color:#C9B8A8}
 .pop-acts button.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}
+.install-banner{position:fixed;bottom:0;left:0;right:0;background:var(--terracotta);color:var(--paper);padding:14px 18px;display:flex;justify-content:space-between;align-items:center;gap:12px;z-index:1000;transform:translateY(100%);transition:transform .3s}
+.install-banner.show{transform:translateY(0)}
+.install-banner button{background:var(--paper);color:var(--terracotta);border:none;padding:8px 16px;border-radius:8px;font-weight:600}
 @media(min-width:980px){.layout{grid-template-columns:minmax(400px,46%) 1fr;align-items:start}.map-col{position:sticky;top:84px}.map-wrap{height:calc(100vh - 120px);min-height:480px}}
 </style>
 </head>
@@ -197,6 +210,7 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
             <option value="work" data-i18n="sort_work">Лучшие для работы</option>
             <option value="romantic" data-i18n="sort_romantic">Самые романтичные</option>
             <option value="name" data-i18n="sort_name">По имени А–Я</option>
+            <option value="nearby" data-i18n="sort_nearby">Ближайшие ко мне</option>
           </select>
           <button class="chip" id="favChip">♥ <span data-i18n="favs">Избранное</span> <b id="favCount">0</b></button>
           <button class="chip" id="resetBtn" data-i18n="reset">Сбросить</button>
@@ -216,12 +230,16 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
   </div>
   <footer><span data-i18n="data_note">Данные © OpenStreetMap contributors</span> · Vibe Search</footer>
 </div>
+<div class="install-banner" id="installBanner">
+  <span data-i18n="install_text">Установить приложение?</span>
+  <button id="installBtn" data-i18n="install_btn">Установить</button>
+</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-const T={ru:{subtitle:"Болонья · найди место под настроение",search_ph:"Поиск по названию или адресу…",sort_default:"Сортировка: по умолчанию",sort_quiet:"Сначала тихие",sort_work:"Лучшие для работы",sort_romantic:"Самые романтичные",sort_name:"По имени А–Я",preset_work:"🤫 Тихо для работы",preset_date:"💑 Для свидания",preset_party:"🎉 Тусовка",favs:"Избранное",reset:"Сбросить",filter_noise:"Шум",filter_laptop:"Для работы",filter_romantic:"Романтика",legend_quiet:"тихо",legend_mid:"средне",legend_loud:"шумно",found:"Найдено",of:"из",nothing_found:"Ничего не найдено",nothing_hint:"Попробуй смягчить фильтры или сбросить их.",error_title:"Не удалось загрузить места",retry:"Повторить",loading:"Загружаем места…",noise:"Шум",work:"Работа",romantic:"Романтика",no_description:"Описание появится позже.",route:"Маршрут",show_map:"На карте",address_unknown:"адрес уточняется",fav_add:"Добавлено в избранное",fav_remove:"Убрано из избранного",undo:"Вернуть",loc_err:"Не удалось определить местоположение",fit_title:"Показать все места",loc_title:"Моё местоположение",data_note:"Данные © OpenStreetMap contributors"},it:{subtitle:"Bologna · trova il posto giusto",search_ph:"Cerca per nome o indirizzo…",sort_default:"Ordina: predefinito",sort_quiet:"Prima i silenziosi",sort_work:"Migliori per lavorare",sort_romantic:"Più romantici",sort_name:"Nome A–Z",preset_work:"🤫 Silenzioso",preset_date:"💑 Appuntamento",preset_party:"🎉 Festa",favs:"Preferiti",reset:"Azzera",filter_noise:"Rumore",filter_laptop:"Lavoro",filter_romantic:"Romantico",legend_quiet:"silenzioso",legend_mid:"medio",legend_loud:"rumoroso",found:"Trovati",of:"di",nothing_found:"Nessun risultato",nothing_hint:"Prova ad allargare i filtri o ad azzerarli.",error_title:"Impossibile caricare i luoghi",retry:"Riprova",loading:"Caricamento…",noise:"Rumore",work:"Lavoro",romantic:"Romantico",no_description:"Descrizione in arrivo.",route:"Percorso",show_map:"Mappa",address_unknown:"indirizzo in arrivo",fav_add:"Aggiunto ai preferiti",fav_remove:"Rimosso dai preferiti",undo:"Annulla",loc_err:"Posizione non disponibile",fit_title:"Mostra tutti",loc_title:"La mia posizione",data_note:"Dati © OpenStreetMap contributors"},en:{subtitle:"Bologna · find a place that matches your mood",search_ph:"Search by name or address…",sort_default:"Sort: default",sort_quiet:"Quietest first",sort_work:"Best for work",sort_romantic:"Most romantic",sort_name:"Name A–Z",preset_work:"🤫 Quiet for work",preset_date:"💑 For a date",preset_party:"🎉 Party",favs:"Favorites",reset:"Reset",filter_noise:"Noise",filter_laptop:"For work",filter_romantic:"Romantic",legend_quiet:"quiet",legend_mid:"medium",legend_loud:"loud",found:"Found",of:"of",nothing_found:"Nothing found",nothing_hint:"Try loosening the filters or reset them.",error_title:"Could not load places",retry:"Retry",loading:"Loading places…",noise:"Noise",work:"Work",romantic:"Romantic",no_description:"Description coming soon.",route:"Route",show_map:"On map",address_unknown:"address pending",fav_add:"Added to favorites",fav_remove:"Removed from favorites",undo:"Undo",loc_err:"Location unavailable",fit_title:"Show all places",loc_title:"My location",data_note:"Data © OpenStreetMap contributors"}};
+const T={ru:{subtitle:"Болонья · найди место под настроение",search_ph:"Поиск по названию или адресу…",sort_default:"Сортировка: по умолчанию",sort_quiet:"Сначала тихие",sort_work:"Лучшие для работы",sort_romantic:"Самые романтичные",sort_name:"По имени А–Я",sort_nearby:"Ближайшие ко мне",preset_work:"🤫 Тихо для работы",preset_date:"💑 Для свидания",preset_party:"🎉 Тусовка",favs:"Избранное",reset:"Сбросить",filter_noise:"Шум",filter_laptop:"Для работы",filter_romantic:"Романтика",legend_quiet:"тихо",legend_mid:"средне",legend_loud:"шумно",found:"Найдено",of:"из",nothing_found:"Ничего не найдено",nothing_hint:"Попробуй смягчить фильтры или сбросить их.",error_title:"Не удалось загрузить места",retry:"Повторить",loading:"Загружаем места…",noise:"Шум",work:"Работа",romantic:"Романтика",no_description:"Описание появится позже.",route:"Маршрут",show_map:"На карте",address_unknown:"адрес уточняется",fav_add:"Добавлено в избранное",fav_remove:"Убрано из избранного",undo:"Вернуть",loc_err:"Не удалось определить местоположение",fit_title:"Показать все места",loc_title:"Моё местоположение",data_note:"Данные © OpenStreetMap contributors",install_text:"Установить приложение?",install_btn:"Установить",km_away:"км от вас",m_away:"м от вас"},it:{subtitle:"Bologna · trova il posto giusto",search_ph:"Cerca per nome o indirizzo…",sort_default:"Ordina: predefinito",sort_quiet:"Prima i silenziosi",sort_work:"Migliori per lavorare",sort_romantic:"Più romantici",sort_name:"Nome A–Z",sort_nearby:"Più vicini a me",preset_work:"🤫 Silenzioso",preset_date:"💑 Appuntamento",preset_party:"🎉 Festa",favs:"Preferiti",reset:"Azzera",filter_noise:"Rumore",filter_laptop:"Lavoro",filter_romantic:"Romantico",legend_quiet:"silenzioso",legend_mid:"medio",legend_loud:"rumoroso",found:"Trovati",of:"di",nothing_found:"Nessun risultato",nothing_hint:"Prova ad allargare i filtri o ad azzerarli.",error_title:"Impossibile caricare i luoghi",retry:"Riprova",loading:"Caricamento…",noise:"Rumore",work:"Lavoro",romantic:"Romantico",no_description:"Descrizione in arrivo.",route:"Percorso",show_map:"Mappa",address_unknown:"indirizzo in arrivo",fav_add:"Aggiunto ai preferiti",fav_remove:"Rimosso dai preferiti",undo:"Annulla",loc_err:"Posizione non disponibile",fit_title:"Mostra tutti",loc_title:"La mia posizione",data_note:"Dati © OpenStreetMap contributors",install_text:"Installare l'app?",install_btn:"Installa",km_away:"km da te",m_away:"m da te"},en:{subtitle:"Bologna · find a place that matches your mood",search_ph:"Search by name or address…",sort_default:"Sort: default",sort_quiet:"Quietest first",sort_work:"Best for work",sort_romantic:"Most romantic",sort_name:"Name A–Z",sort_nearby:"Nearest to me",preset_work:"🤫 Quiet for work",preset_date:"💑 For a date",preset_party:"🎉 Party",favs:"Favorites",reset:"Reset",filter_noise:"Noise",filter_laptop:"For work",filter_romantic:"Romantic",legend_quiet:"quiet",legend_mid:"medium",legend_loud:"loud",found:"Found",of:"of",nothing_found:"Nothing found",nothing_hint:"Try loosening the filters or reset them.",error_title:"Could not load places",retry:"Retry",loading:"Loading places…",noise:"Noise",work:"Work",romantic:"Romantic",no_description:"Description coming soon.",route:"Route",show_map:"On map",address_unknown:"address pending",fav_add:"Added to favorites",fav_remove:"Removed from favorites",undo:"Undo",loc_err:"Location unavailable",fit_title:"Show all places",loc_title:"My location",data_note:"Data © OpenStreetMap contributors",install_text:"Install the app?",install_btn:"Install",km_away:"km away",m_away:"m away"}};
 let lang=localStorage.getItem('vs-lang')||'ru';
 if(!T[lang])lang='ru';
-let places=[],markers={},map=null,userMarker=null,toastTimer=null,loadFailed=false;
+let places=[],markers={},map=null,userMarker=null,toastTimer=null,loadFailed=false,userLocation=null;
 let favs=new Set();
 try{favs=new Set(JSON.parse(localStorage.getItem('vs-favs')||'[]'))}catch(e){}
 const state={q:'',sort:'default',favOnly:false,preset:null};
@@ -231,6 +249,8 @@ function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'
 function num(x){return typeof x==='number'&&isFinite(x)?x:0.5}
 function noiseColor(v){return v<0.4?'#5F8F4E':v<0.7?'#E9A13B':'#C4472B'}
 function summaryFor(v){return (v&&v['summary_'+lang])||v.summary||t('no_description')}
+function haversine(lat1,lon1,lat2,lon2){const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180,a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}
+function formatDistance(m){return m<1000?Math.round(m)+' '+t('m_away'):(m/1000).toFixed(1)+' '+t('km_away')}
 
 function setLanguage(l){
   lang=l;localStorage.setItem('vs-lang',l);document.documentElement.lang=l;
@@ -249,7 +269,8 @@ function makeIcon(p){
 function popupHTML(p){
   const v=p.vibe_attributes,fav=favs.has(p.id);
   const imgHTML=p.image_url?'<img class="pop-img" src="'+esc(p.image_url)+'" alt="'+esc(p.name)+'" onerror="this.style.display=\'none\'">':'';
-  return imgHTML+'<div class="pop-t">'+esc(p.name)+'</div><div class="pop-a">'+esc(p.address||t('address_unknown'))+'</div>'
+  const distHTML=userLocation?'<div style="font-size:11px;color:var(--sky);margin-bottom:6px">📍 '+formatDistance(haversine(userLocation[0],userLocation[1],p.latitude,p.longitude))+'</div>':'';
+  return imgHTML+distHTML+'<div class="pop-t">'+esc(p.name)+'</div><div class="pop-a">'+esc(p.address||t('address_unknown'))+'</div>'
   +'<div class="pop-m"><div><b>'+v.noise_level.toFixed(1)+'</b><span>'+t('noise')+'</span></div><div><b>'+v.laptop_friendly.toFixed(1)+'</b><span>'+t('work')+'</span></div><div><b>'+v.romantic.toFixed(1)+'</b><span>'+t('romantic')+'</span></div></div>'
   +'<div class="pop-s">'+esc(summaryFor(v))+'</div>'
   +'<div class="pop-acts"><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button data-fav="'+p.id+'" class="'+(fav?'on':'')+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')">♥</button></div>';
@@ -265,10 +286,12 @@ function met(label,val,color){
 function cardHTML(p){
   const v=p.vibe_attributes,fav=favs.has(p.id);
   const imgHTML=p.image_url?'<img class="card-img" src="'+esc(p.image_url)+'" alt="'+esc(p.name)+'" onerror="this.outerHTML=\'<div class=card-img-placeholder>☕</div>\'">':'<div class="card-img-placeholder">☕</div>';
+  const distHTML=userLocation?'<div style="font-size:12px;color:var(--sky);margin-bottom:8px">📍 '+formatDistance(haversine(userLocation[0],userLocation[1],p.latitude,p.longitude))+'</div>':'';
   return '<article class="card" style="--spine:'+noiseColor(v.noise_level)+'">'
   +imgHTML
   +'<div class="card-body"><div class="card-top"><h3>'+esc(p.name)+'</h3><button class="heart'+(fav?' on':'')+'" data-fav="'+p.id+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')" aria-label="favorite">♥</button></div>'
   +'<p class="addr">'+esc(p.address||t('address_unknown'))+'</p>'
+  +distHTML
   +'<div class="mets">'+met(t('noise'),v.noise_level,noiseColor(v.noise_level))+met(t('work'),v.laptop_friendly,'#3E7CA6')+met(t('romantic'),v.romantic,'#7C2D3E')+'</div>'
   +'<p class="sum">'+esc(summaryFor(v))+'</p>'
   +'<div class="acts"><a class="btn primary" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button class="btn ghost" onclick="focusPlace('+p.id+')">'+t('show_map')+'</button></div>'
@@ -300,6 +323,7 @@ function applyFilters(){
     if(k==='work')return vb.laptop_friendly-va.laptop_friendly;
     if(k==='romantic')return vb.romantic-va.romantic;
     if(k==='name')return String(a.name).localeCompare(String(b.name));
+    if(k==='nearby'&&userLocation){return haversine(userLocation[0],userLocation[1],a.latitude,a.longitude)-haversine(userLocation[0],userLocation[1],b.latitude,b.longitude);}
     return a.id-b.id;
   });
   renderMarkers(list);
@@ -330,11 +354,13 @@ function focusPlace(id){
 function locate(){
   if(!navigator.geolocation){toast(t('loc_err'));return;}
   navigator.geolocation.getCurrentPosition(pos=>{
-    const ll=[pos.coords.latitude,pos.coords.longitude];
+    userLocation=[pos.coords.latitude,pos.coords.longitude];
     if(userMarker)map.removeLayer(userMarker);
-    userMarker=L.marker(ll,{icon:L.divIcon({className:'vs-pin-wrap',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
-    map.setView(ll,15,{animate:true});
-  },()=>toast(t('loc_err')),{timeout:8000});
+    userMarker=L.marker(userLocation,{icon:L.divIcon({className:'vs-pin-wrap',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
+    map.setView(userLocation,15,{animate:true});
+    if(state.sort==='nearby')applyFilters();
+    else toast('📍 '+formatDistance(0));
+  },()=>toast(t('loc_err')),{timeout:8000,enableHighAccuracy:true});
 }
 
 function updateFavCount(){$('favCount').textContent=favs.size}
@@ -417,6 +443,26 @@ $('resetBtn').onclick=resetAll;
 $('fitBtn').onclick=fitAll;
 $('locBtn').onclick=locate;
 window.addEventListener('resize',()=>{if(map)map.invalidateSize();});
+
+// PWA install prompt
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();
+  deferredPrompt=e;
+  $('installBanner').classList.add('show');
+});
+$('installBtn').onclick=async()=>{
+  if(!deferredPrompt)return;
+  deferredPrompt.prompt();
+  await deferredPrompt.userChoice;
+  deferredPrompt=null;
+  $('installBanner').classList.remove('show');
+};
+
+// Register service worker
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/service-worker.js').catch(()=>{});
+}
 
 setLanguage(lang);
 updateFavCount();
