@@ -304,7 +304,7 @@ function popupHTML(p){
   const v=p.vibe_attributes[0],fav=favs.has(p.id);
   return '<div class="pop-t">'+esc(p.name)+'</div><div class="pop-a">'+esc(p.address||t('address_unknown'))+'</div>'
   +'<div class="pop-m"><div><b>'+v.noise_level.toFixed(1)+'</b><span>'+t('noise')+'</span></div><div><b>'+v.laptop_friendly.toFixed(1)+'</b><span>'+t('work')+'</span></div><div><b>'+v.romantic.toFixed(1)+'</b><span>'+t('romantic')+'</span></div></div>'
-  +'<div class="pop-s">'+esc(v.summary||t('no_description'))+'</div>'
+  +'<div class="pop-s">'+esc(summaryFor(v))+'</div>'
   +'<div class="pop-acts"><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button data-fav="'+p.id+'" class="'+(fav?'on':'')+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')">♥</button></div>';
 }
 function renderMarkers(list){
@@ -321,7 +321,7 @@ function cardHTML(p){
   +'<div class="card-top"><h3>'+esc(p.name)+'</h3><button class="heart'+(fav?' on':'')+'" data-fav="'+p.id+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')" aria-label="favorite">♥</button></div>'
   +'<p class="addr">'+esc(p.address||t('address_unknown'))+'</p>'
   +'<div class="mets">'+met(t('noise'),v.noise_level,noiseColor(v.noise_level))+met(t('work'),v.laptop_friendly,'#3E7CA6')+met(t('romantic'),v.romantic,'#7C2D3E')+'</div>'
-  +'<p class="sum">'+esc(v.summary||t('no_description'))+'</p>'
+  +'<p class="sum">'+esc(summaryFor(v))+'</p>'
   +'<div class="acts"><a class="btn primary" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'">'+t('route')+'</a><button class="btn ghost" onclick="focusPlace('+p.id+')">'+t('show_map')+'</button></div>'
   +'</article>';
 }
@@ -345,7 +345,7 @@ function applyFilters(){
   let list=places.filter(p=>{
     const v=p.vibe_attributes[0];
     if(state.favOnly&&!favs.has(p.id))return false;
-    if(state.q){const hay=((p.name||'')+' '+(p.address||'')+' '+(v.summary||'')).toLowerCase();if(hay.indexOf(state.q)===-1)return false;}
+    if(state.q){const hay=((p.name||'')+' '+(p.address||'')+' '+(v.summary||'')+' '+(v.summary_ru||'')+' '+(v.summary_it||'')+' '+(v.summary_en||'')).toLowerCase();if(hay.indexOf(state.q)===-1)return false;}
     return v.noise_level>=nMin&&v.noise_level<=nMax&&v.laptop_friendly>=lMin&&v.laptop_friendly<=lMax&&v.romantic>=rMin&&v.romantic<=rMax;
   });
   const k=state.sort;
@@ -441,7 +441,7 @@ function loadPlaces(){
     if(!Array.isArray(data))throw new Error('bad data');
     places=data.filter(p=>p&&p.latitude!=null&&p.longitude!=null).map(p=>{
       const v=(p.vibe_attributes&&p.vibe_attributes[0])||{};
-      p.vibe_attributes=[{noise_level:num(v.noise_level),laptop_friendly:num(v.laptop_friendly),romantic:num(v.romantic),summary:v.summary||''}];
+      p.vibe_attributes=[Object.assign({},v,{noise_level:num(v.noise_level),laptop_friendly:num(v.laptop_friendly),romantic:num(v.romantic),summary:v.summary||''})];
       return p;
     });
     initMap();fitAll();applyFilters();
@@ -482,9 +482,12 @@ def healthz():
 @app.route('/api/places')
 def get_places():
     headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY}
-    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,vibe_attributes(noise_level,laptop_friendly,romantic,summary)"
+    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,vibe_attributes(noise_level,laptop_friendly,romantic,summary,summary_ru,summary_it,summary_en,ai_model,confidence)"
     try:
         response = requests.get(url, headers=headers, timeout=15)
+        if response.status_code == 400:
+            url = url.replace(',summary_ru,summary_it,summary_en,ai_model,confidence', '')
+            response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
         if not isinstance(data, list):
