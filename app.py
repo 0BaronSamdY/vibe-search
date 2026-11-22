@@ -1,8 +1,19 @@
+import os
 from flask import Flask, render_template_string, jsonify
 import requests
-from config import SUPABASE_URL, SUPABASE_KEY
 
 app = Flask(__name__)
+
+# Читаем из переменных окружения (Render) или из config.py (локально)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+GEMINI_KEY = os.environ.get("GEMINI_KEY", "")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    try:
+        from config import SUPABASE_URL, SUPABASE_KEY, GEMINI_KEY
+    except ImportError:
+        pass
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -45,13 +56,6 @@ h1{color:white;text-align:center;margin-bottom:10px;font-size:28px}
 .summary{background:#f5f5f5;padding:12px;border-radius:8px;font-size:14px;color:#555;margin-bottom:15px}
 .map-link{display:block;text-align:center;padding:10px;background:#667eea;color:white;text-decoration:none;border-radius:8px;font-weight:600}
 .stats{text-align:center;color:white;margin-bottom:15px;font-size:14px}
-.leaflet-popup-content-wrapper{border-radius:10px}
-.leaflet-popup-content{margin:10px;font-size:14px}
-.popup-title{font-weight:700;font-size:16px;margin-bottom:5px}
-.popup-metrics{display:flex;gap:10px;margin:8px 0}
-.popup-metric{text-align:center;flex:1}
-.popup-metric-value{font-size:18px;font-weight:700;color:#667eea}
-.popup-metric-label{font-size:10px;color:#999}
 </style>
 </head>
 <body>
@@ -63,9 +67,7 @@ h1{color:white;text-align:center;margin-bottom:10px;font-size:28px}
 </div>
 <h1 data-i18n="title">Vibe Search</h1>
 <p class="subtitle" data-i18n="subtitle">Bologna</p>
-
 <div id="map"></div>
-
 <div class="presets">
 <button class="preset-btn" onclick="applyPreset('work')" data-i18n="preset_work">Work</button>
 <button class="preset-btn" onclick="applyPreset('date')" data-i18n="preset_date">Date</button>
@@ -79,7 +81,6 @@ h1{color:white;text-align:center;margin-bottom:10px;font-size:28px}
 <div class="stats" id="stats">Loading...</div>
 <div class="places" id="places"></div>
 </div>
-
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 const T={ru:{title:"Vibe Search",subtitle:"Болонья - Найди место",preset_work:"Тихо для работы",preset_date:"Для свидания",preset_party:"Тусовка",filter_noise:"Шум",filter_laptop:"Для работы",filter_romantic:"Романтика",found:"Найдено",of:"из",nothing_found:"Ничего не найдено",noise:"Шум",work:"Работа",romantic:"Романтика",no_description:"Нет описания",build_route:"Маршрут",address_unknown:"адрес неизвестен",route:"Построить маршрут"},it:{title:"Vibe Search",subtitle:"Bologna - Trova il posto",preset_work:"Silenzioso",preset_date:"Appuntamento",preset_party:"Festa",filter_noise:"Rumore",filter_laptop:"Lavoro",filter_romantic:"Romantico",found:"Trovato",of:"di",nothing_found:"Nessun risultato",noise:"Rumore",work:"Lavoro",romantic:"Romantico",no_description:"Nessuna descrizione",build_route:"Percorso",address_unknown:"indirizzo sconosciuto",route:"Calcola percorso"},en:{title:"Vibe Search",subtitle:"Bologna - Find a place",preset_work:"Quiet for work",preset_date:"For a date",preset_party:"Party",filter_noise:"Noise",filter_laptop:"For work",filter_romantic:"Romantic",found:"Found",of:"of",nothing_found:"Nothing found",noise:"Noise",work:"Work",romantic:"Romantic",no_description:"No description",build_route:"Route",address_unknown:"address unknown",route:"Build route"}};
@@ -87,9 +88,7 @@ let lang=localStorage.getItem('lang')||'ru';
 let places=[];
 let markers=[];
 let map;
-
 function t(k){return T[lang][k]||k}
-
 function setLanguage(l,btn){
     lang=l;
     localStorage.setItem('lang',l);
@@ -106,13 +105,11 @@ function setLanguage(l,btn){
     if(target)target.classList.add('active');
     updateFilters();
 }
-
 function getNoiseColor(level){
     if(level<0.4)return '#4CAF50';
     if(level<0.7)return '#FFC107';
     return '#F44336';
 }
-
 function createCustomIcon(color){
     return L.divIcon({
         className:'custom-marker',
@@ -121,7 +118,6 @@ function createCustomIcon(color){
         iconAnchor:[10,10]
     });
 }
-
 async function loadPlaces(){
     const stats=document.getElementById('stats');
     try{
@@ -137,7 +133,6 @@ async function loadPlaces(){
         console.error(e);
     }
 }
-
 function initMap(){
     if(map)return;
     map=L.map('map').setView([44.4924,11.3426],14);
@@ -146,7 +141,6 @@ function initMap(){
         maxZoom:19
     }).addTo(map);
 }
-
 function updateMarkers(filtered){
     markers.forEach(m=>map.removeLayer(m));
     markers=[];
@@ -167,7 +161,6 @@ function updateMarkers(filtered){
         markers.push(marker);
     });
 }
-
 function updateFilters(){
     const nMin=+document.getElementById('noise-min').value;
     const nMax=+document.getElementById('noise-max').value;
@@ -186,7 +179,6 @@ function updateFilters(){
     updateMarkers(f);
     renderPlaces(f);
 }
-
 function renderPlaces(ps){
     document.getElementById('stats').textContent=t('found')+': '+ps.length+' '+t('of')+' '+places.length;
     const c=document.getElementById('places');
@@ -197,14 +189,12 @@ function renderPlaces(ps){
         return '<div class="place-card"><div class="place-header"><div class="place-name">'+p.name+'</div><div class="noise-indicator '+nc+'"></div></div><div class="place-address">'+(p.address||t('address_unknown'))+'</div><div class="metrics"><div class="metric"><div class="metric-value">'+v.noise_level.toFixed(1)+'</div><div class="metric-label">'+t('noise')+'</div></div><div class="metric"><div class="metric-value">'+v.laptop_friendly.toFixed(1)+'</div><div class="metric-label">'+t('work')+'</div></div><div class="metric"><div class="metric-value">'+v.romantic.toFixed(1)+'</div><div class="metric-label">'+t('romantic')+'</div></div></div><div class="summary">'+(v.summary||t('no_description'))+'</div><a href="https://www.google.com/maps/dir/?api=1&destination='+p.latitude+','+p.longitude+'" class="map-link" target="_blank">'+t('build_route')+'</a></div>';
     }).join('');
 }
-
 function applyPreset(type){
     if(type==='work'){document.getElementById('noise-min').value=0;document.getElementById('noise-max').value=0.4;document.getElementById('laptop-min').value=0.6;document.getElementById('laptop-max').value=1;document.getElementById('romantic-min').value=0;document.getElementById('romantic-max').value=1}
     else if(type==='date'){document.getElementById('noise-min').value=0;document.getElementById('noise-max').value=0.6;document.getElementById('laptop-min').value=0;document.getElementById('laptop-max').value=1;document.getElementById('romantic-min').value=0.6;document.getElementById('romantic-max').value=1}
     else{document.getElementById('noise-min').value=0.6;document.getElementById('noise-max').value=1;document.getElementById('laptop-min').value=0;document.getElementById('laptop-max').value=1;document.getElementById('romantic-min').value=0;document.getElementById('romantic-max').value=0.4}
     updateFilters();
 }
-
 setLanguage(lang);
 loadPlaces();
 </script>
@@ -227,4 +217,5 @@ def get_places():
     return jsonify(response.json())
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port, debug=False)
