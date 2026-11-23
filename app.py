@@ -32,11 +32,11 @@ def service_worker():
 @app.route('/api/places')
 def get_places():
     headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY}
-    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,vibe_attributes(noise_level,laptop_friendly,romantic,summary,summary_ru,summary_it,summary_en)"
+    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,place_type,vibe_attributes(noise_level,laptop_friendly,romantic,summary,summary_ru,summary_it,summary_en)"
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 400:
-            url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,vibe_attributes(noise_level,laptop_friendly,romantic,summary)"
+            url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,place_type,vibe_attributes(noise_level,laptop_friendly,romantic,summary)"
             response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
@@ -125,6 +125,13 @@ header{position:sticky;top:0;z-index:500;background:rgba(250,241,228,.92);backdr
 select{flex:1;min-width:170px;padding:10px 12px;border-radius:12px;border:1.5px solid var(--track);background:var(--cream);font:inherit;font-size:13px;font-weight:600;color:var(--espresso)}
 .chip{padding:10px 14px;border-radius:999px;border:1.5px solid var(--track);background:var(--cream);font-size:13px;font-weight:600;color:var(--muted);transition:all .2s}
 .chip:hover{border-color:var(--wine);color:var(--wine)}.chip.on{background:var(--wine);border-color:var(--wine);color:var(--paper)}.chip b{margin-left:4px}
+.type-filter{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px}
+.type-btn{padding:8px 14px;border-radius:999px;border:1.5px solid var(--track);background:var(--cream);font-size:13px;font-weight:600;color:var(--muted);transition:all .2s}
+.type-btn:hover{border-color:var(--ochre);color:var(--ochre)}.type-btn.on{background:var(--ochre);border-color:var(--ochre);color:var(--espresso)}
+.type-badge{display:inline-block;padding:3px 8px;border-radius:6px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-left:8px}
+.type-badge.cafe{background:#E9A13B;color:var(--espresso)}
+.type-badge.bar{background:#7C2D3E;color:var(--paper)}
+.type-badge.restaurant{background:#5F8F4E;color:var(--paper)}
 .presets{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .preset{padding:12px 8px;border-radius:12px;border:1.5px solid var(--track);background:var(--cream);font-weight:600;font-size:13px;color:var(--espresso);transition:all .2s}
 .preset:hover{transform:translateY(-1px);border-color:var(--ochre)}.preset.on{background:var(--ochre);border-color:var(--ochre);color:var(--espresso);box-shadow:0 6px 16px rgba(233,161,59,.4)}
@@ -227,6 +234,12 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
           <button class="chip" id="favChip">♥ <span data-i18n="favs">Избранное</span> <b id="favCount">0</b></button>
           <button class="chip" id="resetBtn" data-i18n="reset">Сбросить</button>
         </div>
+                <div class="type-filter">
+          <button class="type-btn on" data-type="all" onclick="setType('all')">🏪 <span data-i18n="type_all">Все</span></button>
+          <button class="type-btn" data-type="cafe" onclick="setType('cafe')">☕ <span data-i18n="type_cafe">Кафе</span></button>
+          <button class="type-btn" data-type="bar" onclick="setType('bar')">🍷 <span data-i18n="type_bar">Бары</span></button>
+          <button class="type-btn" data-type="restaurant" onclick="setType('restaurant')">🍽️ <span data-i18n="type_restaurant">Рестораны</span></button>
+        </div>
         <div class="presets">
           <button class="preset" data-preset="work" onclick="applyPreset('work')" data-i18n="preset_work">🤫 Тихо для работы</button>
           <button class="preset" data-preset="date" onclick="applyPreset('date')" data-i18n="preset_date">💑 Для свидания</button>
@@ -256,7 +269,7 @@ if(!T[lang])lang='ru';
 let places=[],markers={},map=null,userMarker=null,toastTimer=null,loadFailed=false,userLocation=null;
 let favs=new Set();
 try{favs=new Set(JSON.parse(localStorage.getItem('vs-favs')||'[]'))}catch(e){}
-const state={q:'',sort:'default',favOnly:false,preset:null};
+const state={q:'',sort:'default',favOnly:false,preset:null,placeType:'all'};
 const $=id=>document.getElementById(id);
 
 function t(k){return (T[lang]&&T[lang][k])||k}
@@ -266,6 +279,10 @@ function noiseColor(v){return v<0.4?'#5F8F4E':v<0.7?'#E9A13B':'#C4472B'}
 function summaryFor(v){return (v&&v['summary_'+lang])||v.summary||t('no_description')}
 function haversine(lat1,lon1,lat2,lon2){const R=6371000,dLat=(lat2-lat1)*Math.PI/180,dLon=(lon2-lon1)*Math.PI/180,a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))}
 function formatDistance(m){return m<1000?Math.round(m)+' '+t('m_away'):(m/1000).toFixed(1)+' '+t('km_away')}
+
+function getTypeIcon(type){return type==='cafe'?'☕':type==='bar'?'🍷':'🍽️'}
+function getTypeName(type){return type==='cafe'?t('type_cafe'):type==='bar'?t('type_bar'):t('type_restaurant')}
+function setType(type){state.placeType=type;document.querySelectorAll('.type-btn').forEach(b=>b.classList.toggle('on',b.getAttribute('data-type')===type));applyFilters();}
 
 function setLanguage(l){
   lang=l;localStorage.setItem('vs-lang',l);document.documentElement.lang=l;
@@ -363,6 +380,7 @@ function applyFilters(){
   let list=places.filter(p=>{
     const v=p.vibe_attributes;
     if(state.favOnly&&!favs.has(p.id))return false;
+    if(state.placeType!=='all'&&p.place_type!==state.placeType)return false;
     if(state.q){const hay=((p.name||'')+' '+(p.address||'')+' '+(v.summary||'')+' '+(v.summary_ru||'')+' '+(v.summary_it||'')+' '+(v.summary_en||'')).toLowerCase();if(hay.indexOf(state.q)===-1)return false;}
     return v.noise_level>=nMin&&v.noise_level<=nMax&&v.laptop_friendly>=lMin&&v.laptop_friendly<=lMax&&v.romantic>=rMin&&v.romantic<=rMax;
   });
@@ -430,7 +448,7 @@ function applyPreset(type){
   applyFilters();
 }
 function resetAll(){
-  state.q='';state.sort='default';state.favOnly=false;state.preset=null;
+  state.q='';state.sort='default';state.favOnly=false;state.preset=null;state.placeType='all';
   $('q').value='';$('sortSel').value='default';
   ['nMin','lMin','rMin'].forEach(id=>$(id).value=0);['nMax','lMax','rMax'].forEach(id=>$(id).value=1);
   applyFilters();fitAll();
@@ -445,6 +463,7 @@ function loadPlaces(){
     places=data.filter(p=>p&&p.latitude!=null&&p.longitude!=null).map(p=>{
       let v=p.vibe_attributes;if(Array.isArray(v))v=v[0]||{};if(!v||typeof v!=='object')v={};
       p.vibe_attributes={noise_level:num(v.noise_level),laptop_friendly:num(v.laptop_friendly),romantic:num(v.romantic),summary:v.summary||'',summary_ru:v.summary_ru||'',summary_it:v.summary_it||'',summary_en:v.summary_en||''};
+      if(!p.place_type)p.place_type='cafe';
       return p;
     });
     initMap();fitAll();applyFilters();
@@ -453,8 +472,8 @@ function loadPlaces(){
 
 [['nMin','nMax'],['lMin','lMax'],['rMin','rMax']].forEach(pair=>{
   const a=$(pair[0]),b=$(pair[1]);
-  a.addEventListener('input',()=>{if(+a.value>+b.value)b.value=a.value;state.preset=null;applyFilters();});
-  b.addEventListener('input',()=>{if(+b.value<+a.value)a.value=b.value;state.preset=null;applyFilters();});
+  a.addEventListener('input',()=>{if(+a.value>+b.value)b.value=a.value;state.preset=null;state.placeType='all';applyFilters();});
+  b.addEventListener('input',()=>{if(+b.value<+a.value)a.value=b.value;state.preset=null;state.placeType='all';applyFilters();});
 });
 $('q').addEventListener('input',e=>{state.q=e.target.value.trim().toLowerCase();applyFilters();});
 $('clearQ').onclick=()=>{$('q').value='';state.q='';applyFilters();};
