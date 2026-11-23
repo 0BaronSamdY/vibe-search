@@ -93,6 +93,8 @@ HTML_TEMPLATE = r"""
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,600;0,9..144,700;1,9..144,600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css">
 <style>
 :root{--terracotta:#C4472B;--terracotta-deep:#93301C;--ochre:#E9A13B;--espresso:#2A1B12;--cream:#FAF1E4;--paper:#FFFDF8;--olive:#5F8F4E;--wine:#7C2D3E;--sky:#3E7CA6;--muted:#6B5A4E;--line:rgba(42,27,18,.12);--track:#E8DCC9}
 *{margin:0;padding:0;box-sizing:border-box}html{scroll-behavior:smooth}
@@ -261,12 +263,13 @@ footer{margin-top:34px;text-align:center;color:var(--muted);font-size:12px}
   <button id="installBtn" data-i18n="install_btn">Установить</button>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 const T={ru:{subtitle:"Болонья · найди место под настроение",search_ph:"Поиск по названию или адресу…",sort_default:"Сортировка: по умолчанию",sort_quiet:"Сначала тихие",sort_work:"Лучшие для работы",sort_romantic:"Самые романтичные",sort_name:"По имени А–Я",sort_nearby:"Ближайшие ко мне",preset_work:"🤫 Тихо для работы",preset_date:"💑 Для свидания",preset_party:"🎉 Тусовка",favs:"Избранное",reset:"Сбросить",filter_noise:"Шум",filter_laptop:"Для работы",filter_romantic:"Романтика",legend_quiet:"тихо",legend_mid:"средне",legend_loud:"шумно",found:"Найдено",of:"из",nothing_found:"Ничего не найдено",nothing_hint:"Попробуй смягчить фильтры или сбросить их.",error_title:"Не удалось загрузить места",retry:"Повторить",loading:"Загружаем места…",noise:"Шум",work:"Работа",romantic:"Романтика",no_description:"Описание появится позже.",route:"Маршрут",show_map:"На карте",address_unknown:"адрес уточняется",fav_add:"Добавлено в избранное",fav_remove:"Убрано из избранного",undo:"Вернуть",loc_err:"Не удалось определить местоположение",fit_title:"Показать все места",loc_title:"Моё местоположение",data_note:"Данные © OpenStreetMap contributors",install_text:"Установить приложение?",install_btn:"Установить",km_away:"км от вас",m_away:"м от вас",reviews:"Отзывы",no_reviews:"Пока нет отзывов",your_name:"Твоё имя",comment:"Комментарий",submit_review:"Отправить",review_added:"✅ Отзыв добавлен!",review_error:"❌ Ошибка при отправке",review_load_err:"Не удалось загрузить",type_all:"Все",type_cafe:"Кафе",type_bar:"Бары",type_restaurant:"Рестораны"},it:{subtitle:"Bologna · trova il posto giusto",search_ph:"Cerca per nome o indirizzo…",sort_default:"Ordina: predefinito",sort_quiet:"Prima i silenziosi",sort_work:"Migliori per lavorare",sort_romantic:"Più romantici",sort_name:"Nome A–Z",sort_nearby:"Più vicini a me",preset_work:"🤫 Silenzioso",preset_date:"💑 Appuntamento",preset_party:"🎉 Festa",favs:"Preferiti",reset:"Azzera",filter_noise:"Rumore",filter_laptop:"Lavoro",filter_romantic:"Romantico",legend_quiet:"silenzioso",legend_mid:"medio",legend_loud:"rumoroso",found:"Trovati",of:"di",nothing_found:"Nessun risultato",nothing_hint:"Prova ad allargare i filtri o ad azzerarli.",error_title:"Impossibile caricare i luoghi",retry:"Riprova",loading:"Caricamento…",noise:"Rumore",work:"Lavoro",romantic:"Romantico",no_description:"Descrizione in arrivo.",route:"Percorso",show_map:"Mappa",address_unknown:"indirizzo in arrivo",fav_add:"Aggiunto ai preferiti",fav_remove:"Rimosso dai preferiti",undo:"Annulla",loc_err:"Posizione non disponibile",fit_title:"Mostra tutti",loc_title:"La mia posizione",data_note:"Dati © OpenStreetMap contributors",install_text:"Installare l'app?",install_btn:"Installa",km_away:"km da te",m_away:"m da te",reviews:"Recensioni",no_reviews:"Nessuna recensione",your_name:"Il tuo nome",comment:"Commento",submit_review:"Invia",review_added:"✅ Recensione aggiunta!",review_error:"❌ Errore nell'invio",review_load_err:"Impossibile caricare",type_all:"Tutti",type_cafe:"Caffè",type_bar:"Bar",type_restaurant:"Ristoranti"},en:{subtitle:"Bologna · find a place that matches your mood",search_ph:"Search by name or address…",sort_default:"Sort: default",sort_quiet:"Quietest first",sort_work:"Best for work",sort_romantic:"Most romantic",sort_name:"Name A–Z",sort_nearby:"Nearest to me",preset_work:"🤫 Quiet for work",preset_date:"💑 For a date",preset_party:"🎉 Party",favs:"Favorites",reset:"Reset",filter_noise:"Noise",filter_laptop:"For work",filter_romantic:"Romantic",legend_quiet:"quiet",legend_mid:"medium",legend_loud:"loud",found:"Found",of:"of",nothing_found:"Nothing found",nothing_hint:"Try loosening the filters or reset them.",error_title:"Could not load places",retry:"Retry",loading:"Loading places…",noise:"Noise",work:"Work",romantic:"Romantic",no_description:"Description coming soon.",route:"Route",show_map:"On map",address_unknown:"address pending",fav_add:"Added to favorites",fav_remove:"Removed from favorites",undo:"Undo",loc_err:"Location unavailable",fit_title:"Show all places",loc_title:"My location",data_note:"Data © OpenStreetMap contributors",install_text:"Install the app?",install_btn:"Install",km_away:"km away",m_away:"m away",reviews:"Reviews",no_reviews:"No reviews yet",your_name:"Your name",comment:"Comment",submit_review:"Submit",review_added:"✅ Review added!",review_error:"❌ Submission error",review_load_err:"Could not load",type_all:"All",type_cafe:"Cafés",type_bar:"Bars",type_restaurant:"Restaurants"}};
 
 let lang=localStorage.getItem('vs-lang')||'ru';
 if(!T[lang])lang='ru';
-let places=[],markers={},map=null,userMarker=null,toastTimer=null,loadFailed=false,userLocation=null;
+let places=[],markers=null,markerCluster=null,map=null,userMarker=null,toastTimer=null,loadFailed=false,userLocation=null;
 let favs=new Set();
 try{favs=new Set(JSON.parse(localStorage.getItem('vs-favs')||'[]'))}catch(e){}
 const state={q:'',sort:'default',favOnly:false,preset:null,placeType:'all'};
@@ -349,13 +352,15 @@ function popupHTML(p){
 
 function renderMarkers(list){
   if(!map)return;
-  Object.keys(markers).forEach(k=>map.removeLayer(markers[k]));markers={};
+  if(markerCluster){map.removeLayer(markerCluster);markerCluster=null;}
+  markerCluster=L.markerClusterGroup({maxClusterRadius:50,spiderfyOnMaxZoom:true});
   list.forEach(p=>{
-    const mk=L.marker([p.latitude,p.longitude],{icon:makeIcon(p)}).addTo(map);
+    const mk=L.marker([p.latitude,p.longitude],{icon:makeIcon(p)});
     mk.bindPopup(popupHTML(p),{maxWidth:280});
     mk.on('popupopen',()=>{setTimeout(()=>loadReviews(p.id),150);});
-    markers[p.id]=mk;
+    markerCluster.addLayer(mk);
   });
+  map.addLayer(markerCluster);
 }
 
 function met(label,val,color){
