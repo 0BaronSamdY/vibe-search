@@ -32,7 +32,7 @@ def service_worker():
 @app.route('/api/places')
 def get_places():
     headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY}
-    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,place_type,vibe_attributes(noise_level,laptop_friendly,romantic,summary,summary_ru,summary_it,summary_en)"
+    url = SUPABASE_URL + "/rest/v1/places?select=id,name,address,latitude,longitude,image_url,vibe_attributes(noise_level,laptop_friendly,romantic,summary,summary_ru,summary_it,summary_en)"
     try:
         response = requests.get(url, headers=headers, timeout=15)
         if response.status_code == 400:
