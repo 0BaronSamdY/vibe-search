@@ -29,6 +29,22 @@ def manifest():
 def service_worker():
     return send_from_directory('.', 'service-worker.js', mimetype='application/javascript')
 
+@app.route('/api/cities')
+def get_cities():
+    headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY}
+    url = SUPABASE_URL + "/rest/v1/cities?select=id,name_ru,name_it,name_en,lat,lng,zoom,radius_km&active=eq.true&order=name_it"
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        city = request.args.get('city', 'bologna')
+        data = [p for p in data if p.get('city', 'bologna') == city]
+        if not isinstance(data, list):
+            return jsonify({"error": "bad response"}), 502
+        return jsonify(data)
+    except Exception:
+        return jsonify({"error": "upstream unavailable"}), 502
+
 @app.route('/api/places')
 def get_places():
     headers = {"apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY}
@@ -40,6 +56,8 @@ def get_places():
             response = requests.get(url, headers=headers, timeout=15)
         response.raise_for_status()
         data = response.json()
+        city = request.args.get('city', 'bologna')
+        data = [p for p in data if p.get('city', 'bologna') == city]
         if not isinstance(data, list):
             return jsonify({"error": "bad response"}), 502
         resp = jsonify(data)
@@ -280,6 +298,14 @@ body.dark .map-wrap{border-color:rgba(245,230,211,.15);background:#1a120b}
 body.dark .theme-btn{border-color:rgba(245,230,211,.3);color:#f5e6d3}
 body.dark .theme-btn:hover{background:#E9A13B;border-color:#E9A13B;color:#1a120b}
 
+.city-switcher{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px}
+.city-btn{padding:6px 12px;border-radius:999px;border:1.5px solid var(--track);background:var(--cream);font-size:12px;font-weight:600;color:var(--muted);transition:all .2s}
+.city-btn:hover{border-color:var(--terracotta);color:var(--terracotta)}
+.city-btn.on{background:var(--terracotta);border-color:var(--terracotta);color:var(--paper)}
+body.dark .city-btn{background:#1f1610;border-color:rgba(245,230,211,.15);color:#b8a89a}
+body.dark .city-btn:hover{border-color:#C4472B;color:#E9A13B}
+body.dark .city-btn.on{background:#C4472B;border-color:#C4472B;color:#fff}
+
 </style>
 </head>
 <body>
@@ -324,6 +350,12 @@ body.dark .theme-btn:hover{background:#E9A13B;border-color:#E9A13B;color:#1a120b
           <button class="chip" id="favChip">♥ <span data-i18n="favs">Избранное</span> <b id="favCount">0</b></button>
           <button class="chip" id="resetBtn" data-i18n="reset">Сбросить</button>
         </div>
+                <div class="city-switcher" id="citySwitcher">
+          <button class="city-btn on" data-city="bologna" onclick="setCity('bologna')">🏛️ Bologna</button>
+          <button class="city-btn" data-city="rome" onclick="setCity('rome')">🏛️ Roma</button>
+          <button class="city-btn" data-city="milan" onclick="setCity('milan')">🏛️ Milano</button>
+          <button class="city-btn" data-city="florence" onclick="setCity('florence')">🏛️ Firenze</button>
+        </div>
         <div class="type-filter">
           <button class="type-btn on" data-type="all" onclick="setType('all')">🏪 <span data-i18n="type_all">Все</span></button>
           <button class="type-btn" data-type="cafe" onclick="setType('cafe')">☕ <span data-i18n="type_cafe">Кафе</span></button>
@@ -360,7 +392,7 @@ if(!T[lang])lang='ru';
 let places=[],markers=null,markerCluster=null,map=null,userMarker=null,toastTimer=null,loadFailed=false,userLocation=null;
 let favs=new Set();
 try{favs=new Set(JSON.parse(localStorage.getItem('vs-favs')||'[]'))}catch(e){}
-const state={q:'',sort:'default',favOnly:false,preset:null,placeType:'all'};
+const state={q:'',sort:'default',favOnly:false,preset:null,placeType:'all',currentCity:'bologna'};
 const $=id=>document.getElementById(id);
 
 function t(k){return (T[lang]&&T[lang][k])||k}
@@ -508,7 +540,7 @@ function initMap(){
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
   setTimeout(()=>map.invalidateSize(),60);
 }
-function fitAll(){if(!map||!places.length)return;map.setView([44.4924,11.3426],14);map.fitBounds(L.latLngBounds(places.filter(p=>Math.abs(p.latitude-44.4924)<0.02&&Math.abs(p.longitude-11.3426)<0.03).map(p=>[p.latitude,p.longitude])),{padding:[36,36],maxZoom:16});}
+function fitAll(){if(!map||!places.length)return;const city=citiesData.find(c=>c.id===state.currentCity);if(city){map.setView([city.lat,city.lng],city.zoom||14);}map.fitBounds(L.latLngBounds(places.map(p=>[p.latitude,p.longitude])),{padding:[36,36],maxZoom:16});}
 function focusPlace(id){const p=places.find(x=>x.id===id);if(!p||!map)return;$('mapWrap').scrollIntoView({behavior:'smooth',block:'start'});map.setView([p.latitude,p.longitude],17,{animate:true});if(markers[id])markers[id].openPopup();}
 function locate(){
   if(!navigator.geolocation){toast(t('loc_err'));return;}
@@ -547,7 +579,7 @@ function applyPreset(type){
   applyFilters();
 }
 function resetAll(){
-  state.q='';state.sort='default';state.favOnly=false;state.preset=null;state.placeType='all';
+  state.q='';state.sort='default';state.favOnly=false;state.preset=null;state.placeType='all';state.currentCity='bologna';
   $('q').value='';$('sortSel').value='default';
   ['nMin','lMin','rMin'].forEach(id=>$(id).value=0);['nMax','lMax','rMax'].forEach(id=>$(id).value=1);
   document.querySelectorAll('.type-btn').forEach(b=>b.classList.toggle('on',b.getAttribute('data-type')==='all'));
@@ -587,7 +619,38 @@ window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPro
 $('installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prompt();await deferredPrompt.userChoice;deferredPrompt=null;$('installBanner').classList.remove('show');};
 if('serviceWorker' in navigator){navigator.serviceWorker.register('/service-worker.js').catch(()=>{});}
 
-setLanguage(lang);updateFavCount();loadPlaces();
+setLanguage(lang);updateFavCount();loadCities();loadPlaces();
+
+let citiesData = [];
+function setCity(cityId){
+  state.currentCity = cityId;
+  localStorage.setItem('vs-city', cityId);
+  document.querySelectorAll('.city-btn').forEach(b => b.classList.toggle('on', b.getAttribute('data-city') === cityId));
+  const city = citiesData.find(c => c.id === cityId);
+  if(city && map){
+    map.setView([city.lat, city.lng], city.zoom || 14);
+  }
+  loadPlaces();
+}
+function loadCities(){
+  fetch('/api/cities').then(r => r.json()).then(data => {
+    if(!Array.isArray(data)) return;
+    citiesData = data;
+    const saved = localStorage.getItem('vs-city') || 'bologna';
+    const switcher = document.getElementById('citySwitcher');
+    if(switcher && data.length > 0){
+      switcher.innerHTML = data.map(c => 
+        '<button class="city-btn' + (c.id === saved ? ' on' : '') + '" data-city="' + c.id + '" onclick="setCity(\'' + c.id + '\')">' + 
+        '🏛️ ' + c['name_' + lang] + '</button>'
+      ).join('');
+    }
+    const city = data.find(c => c.id === saved);
+    if(city && map){
+      map.setView([city.lat, city.lng], city.zoom || 14);
+    }
+  }).catch(() => {});
+}
+
 
 function toggleTheme(){
   document.body.classList.toggle('dark');
