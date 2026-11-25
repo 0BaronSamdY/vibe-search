@@ -19,7 +19,7 @@ def get_user_location():
 def overpass_query(lat, lng, radius_km):
     radius_m = radius_km * 1000
     query = f"""
-    [out:json][timeout:180];
+    [out:json][timeout:60];
     (
       node["amenity"="cafe"](around:{radius_m},{lat},{lng});
       node["amenity"="bar"](around:{radius_m},{lat},{lng});
@@ -28,22 +28,29 @@ def overpass_query(lat, lng, radius_km):
     );
     out body;
     """
-    
-    for attempt in range(3):
+    servers = [
+        "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.private.coffee/api/interpreter",
+    ]
+    headers = {"User-Agent": "VibeSearch/1.0", "Accept": "application/json"}
+    last = None
+    for url in servers:
+        host = url.split("/")[2]
         try:
-            r = requests.post(
-                "https://overpass-api.de/api/interpreter",
-                data={"data": query},
-                headers={"User-Agent": "VibeSearch/1.0", "Accept": "application/json"},
-                timeout=180
-            )
+            print(f"  🌐 {host} ...")
+            r = requests.post(url, data={"data": query}, headers=headers, timeout=90)
             r.raise_for_status()
-            return r.json().get("elements", [])
+            els = r.json().get("elements", [])
+            print(f"  ✅ {host} OK")
+            return els
         except Exception as e:
-            if attempt == 2:
-                raise
-            print(f"  ⚠️  Retry {attempt+1}/3: {e}")
-            time.sleep(5)
+            last = e
+            print(f"  ⚠️  {host}: {str(e)[:70]}")
+            time.sleep(2)
+    raise last
+
 
 def classify_place(name, tags):
     name_lower = (name or "").lower()
@@ -121,7 +128,7 @@ def get_wikimedia_image(name):
         pass
     return None
 
-def import_nearby(lat, lng, radius_km=2, city_name="Nearby"):
+def import_nearby(lat, lng, radius_km=2, city_name="Nearby", city_id="nearby"):
     print(f"\n📍 Importing places near {lat:.4f}, {lng:.4f} (radius={radius_km}km)...")
     
     # Query Overpass
@@ -130,7 +137,7 @@ def import_nearby(lat, lng, radius_km=2, city_name="Nearby"):
     print(f"  📦 Got {len(elements)} places from Overpass")
     
     # Get existing places to avoid duplicates
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/places?select=id,name", headers=HEADERS)
+    r = requests.get(f"{SUPABASE_URL}/rest/v1/places?select=id,name&city=eq.{city_id}", headers=HEADERS)
     existing = {p["name"].lower() for p in r.json()}
     
     imported = 0
@@ -163,7 +170,7 @@ def import_nearby(lat, lng, radius_km=2, city_name="Nearby"):
             "latitude": elem["lat"],
             "longitude": elem["lon"],
             "place_type": place_type,
-            "city": "nearby",
+            "city": city_id,
             "image_url": image_url,
             "vibe_attributes": {
                 "noise_level": 0.5,
@@ -191,6 +198,8 @@ def import_nearby(lat, lng, radius_km=2, city_name="Nearby"):
     
     print(f"\n🎯 Imported={imported}, Skipped={skipped}")
 
+CITY_MAP = {"bologna":"bologna","firenze":"florence","florence":"florence","roma":"rome","rome":"rome","milano":"milan","milan":"milan"}
+
 if __name__ == "__main__":
     # Проверяем аргументы командной строки
     if len(sys.argv) >= 3:
@@ -210,5 +219,5 @@ if __name__ == "__main__":
             print("⚠️  Could not detect location. Using Bologna as default.")
             lat, lng, city_name = 44.4924, 11.3426, "Bologna"
     
-    import_nearby(lat, lng, radius, city_name)
+    import_nearby(lat, lng, radius, city_name, CITY_MAP.get(city_name.lower(), "nearby"))
     print("\n🎉 Import complete!")
