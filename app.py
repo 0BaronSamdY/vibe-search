@@ -493,7 +493,7 @@ function cardHTML(p){
   const distHTML=userLocation?'<div class="dist">📍 '+formatDistance(haversine(userLocation[0],userLocation[1],p.latitude,p.longitude))+'</div>':'';
   const typeBadge='<span class="type-badge '+p.place_type+'">'+getTypeIcon(p.place_type)+' '+getTypeName(p.place_type)+'</span>';
   return '<article class="card" style="--spine:'+noiseColor(v.noise_level)+'">'+imgHTML
-  +'<div class="card-body"><div class="card-top"><h3>'+esc(p.name)+' '+typeBadge+'</h3><button class="heart'+(fav?' on':'')+'" data-fav="'+p.id+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')" aria-label="favorite">♥</button></div>'
+  +'<div class="card-body"><div class="card-top"><h3>'+esc(p.name)+' '+typeBadge+'</h3><button class="heart'+(fav?' on':'')+'" data-fav="'+p.id+'" aria-pressed="'+fav+'" onclick="toggleFav('+p.id+')" aria-label="Aggiungi ai preferiti">♥</button></div>'
   +'<p class="addr">'+esc(p.address||t('address_unknown'))+'</p>'+distHTML
   +'<div class="mets">'+met(t('noise'),v.noise_level,noiseColor(v.noise_level))+met(t('work'),v.laptop_friendly,'#3E7CA6')+met(t('romantic'),v.romantic,'#7C2D3E')+'</div>'
   +'<p class="sum">'+esc(summaryFor(v))+'</p>'
@@ -536,8 +536,8 @@ function applyFilters(){
 function initMap(){
   if(map)return;
   map=L.map('map',{zoomControl:false});
-  L.control.zoom({position:'bottomright'}).addTo(map);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map);
+  L.control.zoom({position:'bottomright'}).addTo(map); if(p && p.id) markers[p.id] = mk;
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap',maxZoom:19}).addTo(map); if(p && p.id) markers[p.id] = mk;
   setTimeout(()=>map.invalidateSize(),60);
 }
 function fitAll(){if(!map||!places.length)return;const city=citiesData.find(c=>c.id===state.currentCity);if(city){map.setView([city.lat,city.lng],city.zoom||14);}map.fitBounds(L.latLngBounds(places.map(p=>[p.latitude,p.longitude])),{padding:[36,36],maxZoom:16});}
@@ -547,7 +547,7 @@ function locate(){
   navigator.geolocation.getCurrentPosition(pos=>{
     userLocation=[pos.coords.latitude,pos.coords.longitude];
     if(userMarker)map.removeLayer(userMarker);
-    userMarker=L.marker(userLocation,{icon:L.divIcon({className:'vs-pin-wrap',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map);
+    userMarker=L.marker(userLocation,{icon:L.divIcon({className:'vs-pin-wrap',html:'<span class="me"></span>',iconSize:[18,18],iconAnchor:[9,9]})}).addTo(map); if(p && p.id) markers[p.id] = mk;
     map.setView(userLocation,15,{animate:true});
     if(state.sort==='nearby')applyFilters();else toast('📍 OK');
   },()=>toast(t('loc_err')),{timeout:8000,enableHighAccuracy:true});
@@ -588,7 +588,7 @@ function resetAll(){
 
 function loadPlaces(){
   loadFailed=false;$('stats').textContent=t('loading');$('places').innerHTML='';
-  fetch('/api/places',{cache:'no-store'})
+  fetch('/api/places?city='+state.currentCity,{cache:'no-store'})
   .then(r=>{if(!r.ok)throw new Error('HTTP '+r.status);return r.json();})
   .then(data=>{
     if(!Array.isArray(data))throw new Error('bad data');
